@@ -52,15 +52,13 @@ The system requirements for the target system are as follows:
 >
 > Please use <https://github.com/LloydAsp/OsMutation> instead.
 
-## Download (Current system is <img width="20" height="20" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux)
-
-For Linux OS:
+## Usages (Current system is <img width="20" height="20" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux)
 
 ```bash
 curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O mark.sh $_
 ```
 
-## Download (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
+## Usages (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
 
 > [!IMPORTANT]
 > Before proceeding, please disable the 'Real-time protection' feature in `Windows Defender`. This feature may prevent `certutil` from downloading any files.
@@ -89,8 +87,6 @@ curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O
    <[(https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh)](https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh)>
 
 </details>
-
-For Windows OS:
 
 ```batch
 certutil -urlcache -f -split https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.bat
