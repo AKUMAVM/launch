@@ -7,7 +7,7 @@ confhome=https://raw.githubusercontent.com/AKUMAVM/launch/main
 #confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 # confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
 
-# 用于判断 reinstall.sh 和 trans.sh 是否兼容
+# 用于判断 mark.sh 和 trans.sh 是否兼容
 SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
 DEFAULT_PASSWORD=123@@@
 
@@ -33,9 +33,9 @@ trap_err() {
 
 usage_and_exit() {
     if is_in_windows; then
-        reinstall_____='.\reinstall.bat'
+        reinstall_____='.\mark.bat'
     else
-        reinstall_____=' ./reinstall.sh'
+        reinstall_____=' ./mark.sh'
     fi
     cat <<EOF
 Usage: $reinstall_____ centos      9
@@ -3095,8 +3095,8 @@ mod_initrd() {
     curl -Lo $initrd_dir/trans.sh $confhome/trans.sh
     if ! grep -iq "$SCRIPT_VERSION" $initrd_dir/trans.sh; then
         error_and_exit "
-This script is outdated, please download reinstall.sh again.
-脚本有更新，请重新下载 reinstall.sh"
+This script is outdated, please download mark.sh again.
+脚本有更新，请重新下载 mark.sh"
     fi
 
     curl -Lo $initrd_dir/alpine-network.sh $confhome/alpine-network.sh
