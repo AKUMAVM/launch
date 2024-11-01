@@ -57,13 +57,7 @@ The system requirements for the target system are as follows:
 For Linux OS:
 
 ```bash
-curl -O [https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh](https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh) || wget -O mark.sh $_
-```
-
-For server inside China:
-
-```bash
-curl -O https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O reinstall.sh $_
+curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O mark.sh $_
 ```
 
 ## Download (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
