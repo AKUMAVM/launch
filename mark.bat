@@ -120,12 +120,12 @@ if not exist "%tags%" (
 rem 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
 for /f %%a in ('%SystemDrive%\cygwin\bin\cygpath -ua ./') do set thisdir=%%a
 
-rem 下载 reinstall.sh
-if not exist reinstall.sh (
-    rem call :download %confhome%/reinstall.sh %~dp0reinstall.sh
-    call :download_with_curl %confhome%/reinstall.sh %thisdir%reinstall.sh
+rem 下载 mark.sh
+if not exist mark.sh (
+    rem call :download %confhome%/mark.sh %~dp0mark.sh
+    call :download_with_curl %confhome%/mark.sh %thisdir%mark.sh
     if errorlevel 1 goto :download_failed
-    call :chmod a+x %thisdir%reinstall.sh
+    call :chmod a+x %thisdir%mark.sh
 )
 
 rem 为每个参数添加引号，使参数正确传递到 bash
@@ -134,12 +134,12 @@ for %%a in (%*) do (
 )
 
 rem 方法1
-%SystemDrive%\cygwin\bin\dos2unix -q '%thisdir%reinstall.sh'
-%SystemDrive%\cygwin\bin\bash -l -c '%thisdir%reinstall.sh !param!'
+%SystemDrive%\cygwin\bin\dos2unix -q '%thisdir%mark.sh'
+%SystemDrive%\cygwin\bin\bash -l -c '%thisdir%mark.sh !param!'
 
 rem 方法2
-rem %SystemDrive%\cygwin\bin\bash reinstall.sh %*
-rem 再在 reinstall.sh 里运行 source /etc/profile
+rem %SystemDrive%\cygwin\bin\bash mark.sh %*
+rem 再在 mark.sh 里运行 source /etc/profile
 exit /b
 
 
