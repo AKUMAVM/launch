@@ -54,10 +54,10 @@ The system requirements for the target system are as follows:
 
 ## Download (Current system is <img width="20" height="20" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux)
 
-For server outside China:
+For Linux OS:
 
 ```bash
-curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O reinstall.sh $_
+curl -O [https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh](https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh) || wget -O mark.sh $_
 ```
 
 For server inside China:
@@ -90,30 +90,24 @@ curl -O https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reins
 
 3. Download manually by copying these two files through `Remote Desktop Connection`.
 
-   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
+   <[(https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.bat)](https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.bat)>
 
-   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
+   <[(https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh)](https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh)>
 
 </details>
 
-For server outside China:
+For Windows OS:
 
 ```batch
-certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
-```
-
-For server inside China:
-
-```batch
-certutil -urlcache -f -split https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+certutil -urlcache -f -split https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.bat
 ```
 
 ## Usage
 
 **All features** can be used on both Linux and Windows.
 
-- on Linux, execute `bash reinstall.sh`
-- on Windows, execute `.\reinstall.bat`
+- on Linux, execute `bash mark.sh`
+- on Windows, execute `.\mark.bat`
 
 ### Feature 1: Install <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
