@@ -3809,6 +3809,9 @@ else
 fi
 
 if is_in_windows; then
-    echo 'You can run this command to reboot:'
-    echo 'shutdown /r /t 0'
+    echo 'System will reboot now'
+    shutdown /r /t 0
+else
+    echo 'System will reboot now'
+    reboot now
 fi
