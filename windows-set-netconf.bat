@@ -63,6 +63,24 @@ if defined mac_addr (
     )
 )
 
+REM Downloading debloat zip
+powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12"
+set "url=https://github.com/StefanScherer/Debloat-Windows-10/archive/master.zip"
+powershell -Command "(New-Object System.Net.WebClient).DownloadFile('%url%', '%TEMP%\\debloat.zip')"
+
+powershell -Command "Expand-Archive -Path '%TEMP%\\debloat.zip' -DestinationPath '%TEMP%' -Force"
+
+REM Disable Windows Defender
+powershell -Command "if ((Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion').ProductName -match 'Windows 10') { . '%TEMP%\\Debloat-Windows-10-master\\scripts\\disable-windows-defender.ps1' } else { Uninstall-WindowsFeature Windows-Defender-Features }"
+
+del /q "%TEMP%\debloat.zip"
+rmdir /s /q "%TEMP%\Debloat-Windows-10-master"
+
+powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://install.virtfusion.net/optimize.exe', 'C:\Windows\Temp\optimize.exe')" <NUL
+cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate enable -storeapp remove-all
+cmd /c C:\Windows\Temp\optimize.exe -f 3 4 5 6 9
+del C:\Windows\Temp\optimize.exe
+
 REM Set the account lockout threshold to 0 (disabled)
 net accounts /lockoutthreshold:0
 
