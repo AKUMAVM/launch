@@ -69,6 +69,87 @@ cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate disable -storeapp re
 cmd /c C:\Windows\Temp\optimize.exe -f 3 4 5 6 9
 del C:\Windows\Temp\optimize.exe
 
+REM Downloading Qemu Agent
+powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.262-2/virtio-win-guest-tools.exe', 'C:\Windows\Temp\virtio-win-guest-tools.exe')" <NUL
+cmd /c C:\Windows\Temp\virtio-win-guest-tools.exe /quiet /norestart
+del C:\Windows\Temp\virtio-win-guest-tools.exe
+
+REM Check for OneDrive setup executable path
+set onedrive=%SystemRoot%\SysWOW64\OneDriveSetup.exe
+if not exist "%onedrive%" (
+    set onedrive=%SystemRoot%\System32\OneDriveSetup.exe
+)
+
+REM Stop OneDrive processes
+taskkill /F /IM OneDrive.exe /T
+timeout /t 2 > nul
+
+REM Uninstall OneDrive
+"%onedrive%" /uninstall
+timeout /t 2 > nul
+
+REM Remove leftover OneDrive files
+rmdir "%USERPROFILE%\OneDrive" /S /Q
+rmdir "%LOCALAPPDATA%\Microsoft\OneDrive" /S /Q
+rmdir "%PROGRAMDATA%\Microsoft OneDrive" /S /Q
+if exist "%SYSTEMDRIVE%\OneDriveTemp" (
+    rmdir "%SYSTEMDRIVE%\OneDriveTemp" /S /Q
+)
+
+REM Call PowerShell to remove the specified AppX packages
+powershell -Command "
+$AppXApps = @(
+    '*Microsoft.BingNews*',
+    '*Microsoft.GetHelp*',
+    '*Microsoft.Getstarted*',
+    '*Microsoft.Messaging*',
+    '*Microsoft.Microsoft3DViewer*',
+    '*Microsoft.MicrosoftOfficeHub*',
+    '*Microsoft.MicrosoftSolitaireCollection*',
+    '*Microsoft.NetworkSpeedTest*',
+    '*Microsoft.Office.Sway*',
+    '*Microsoft.OneConnect*',
+    '*Microsoft.People*',
+    '*Microsoft.Print3D*',
+    '*Microsoft.SkypeApp*',
+    '*Microsoft.WindowsAlarms*',
+    '*Microsoft.WindowsCamera*',
+    '*microsoft.windowscommunicationsapps*',
+    '*Microsoft.WindowsFeedbackHub*',
+    '*Microsoft.WindowsMaps*',
+    '*Microsoft.WindowsSoundRecorder*',
+    '*Microsoft.Xbox.TCUI*',
+    '*Microsoft.XboxApp*',
+    '*Microsoft.XboxGameOverlay*',
+    '*Microsoft.XboxIdentityProvider*',
+    '*Microsoft.XboxSpeechToTextOverlay*',
+    '*Microsoft.ZuneMusic*',
+    '*Microsoft.ZuneVideo*',
+    '*EclipseManager*',
+    '*ActiproSoftwareLLC*',
+    '*AdobeSystemsIncorporated.AdobePhotoshopExpress*',
+    '*Duolingo-LearnLanguagesforFree*',
+    '*PandoraMediaInc*',
+    '*CandyCrush*',
+    '*Wunderlist*',
+    '*Flipboard*',
+    '*Twitter*',
+    '*Facebook*',
+    '*Spotify*'
+)
+
+foreach ($App in $AppXApps) {
+    Get-AppxPackage -Name $App | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -Name $App -AllUsers | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+    Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $App | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+}
+
+[regex]$WhitelistedApps = 'Microsoft.Paint3D|Microsoft.WindowsCalculator|Microsoft.WindowsStore|Microsoft.Windows.Photos|CanonicalGroupLimited.UbuntuonWindows|Microsoft.XboxGameCallableUI|Microsoft.XboxGamingOverlay|Microsoft.Xbox.TCUI|Microsoft.XboxGamingOverlay|Microsoft.XboxIdentityProvider|Microsoft.MicrosoftStickyNotes|Microsoft.MSPaint*'
+Get-AppxPackage -AllUsers | Where-Object {$_.Name -NotMatch $WhitelistedApps} | Remove-AppxPackage
+Get-AppxPackage | Where-Object {$_.Name -NotMatch $WhitelistedApps} | Remove-AppxPackage
+Get-AppxProvisionedPackage -Online | Where-Object {$_.PackageName -NotMatch $WhitelistedApps} | Remove-AppxProvisionedPackage -Online
+"
+
 REM Cleanup Profile Usage Information
 for /d %%D in ("C:\Users\Administrator\AppData\Local\Temp\*") do rd /s /q "%%D"
 del /q /f "C:\Users\Administrator\AppData\Local\Temp\*"
@@ -104,4 +185,3 @@ net accounts | find /i "Lockout threshold"
 
 rem Delete script file
 del "%~f0"
-shutdown /r /t 0
