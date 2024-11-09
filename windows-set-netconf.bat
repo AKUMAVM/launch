@@ -63,23 +63,38 @@ if defined mac_addr (
     )
 )
 
-REM Downloading debloat zip
-powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12"
-set "url=https://github.com/StefanScherer/Debloat-Windows-10/archive/master.zip"
-powershell -Command "(New-Object System.Net.WebClient).DownloadFile('%url%', '%TEMP%\\debloat.zip')"
-
-powershell -Command "Expand-Archive -Path '%TEMP%\\debloat.zip' -DestinationPath '%TEMP%' -Force"
-
-REM Disable Windows Defender
-powershell -Command "if ((Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion').ProductName -match 'Windows 10') { . '%TEMP%\\Debloat-Windows-10-master\\scripts\\disable-windows-defender.ps1' } else { Uninstall-WindowsFeature Windows-Defender-Features }"
-
-del /q "%TEMP%\debloat.zip"
-rmdir /s /q "%TEMP%\Debloat-Windows-10-master"
-
+REM Downloading Optimize Apps
 powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://install.virtfusion.net/optimize.exe', 'C:\Windows\Temp\optimize.exe')" <NUL
-cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate enable -storeapp remove-all
+cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate disable -storeapp remove-all -antivirus disable
 cmd /c C:\Windows\Temp\optimize.exe -f 3 4 5 6 9
 del C:\Windows\Temp\optimize.exe
+
+REM Cleanup Profile Usage Information
+for /d %%D in ("C:\Users\Administrator\AppData\Local\Temp\*") do rd /s /q "%%D"
+del /q /f "C:\Users\Administrator\AppData\Local\Temp\*"
+for /d %%D in ("C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Recent\*") do rd /s /q "%%D"
+del /q /f "C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Recent\*"
+for /d %%D in ("C:\Users\Administrator\Downloads\*") do rd /s /q "%%D"
+del /q /f "C:\Users\Administrator\Downloads\*"
+del /q /f "C:\Windows\System32\sysprep\Panther\setupact.log"
+del /q /f "C:\Windows\System32\sysprep\Panther\setuperr.log"
+del /q /f "C:\Windows\System32\sysprep\Panther\IE\setupact.log"
+
+REM Removes Temporary Files
+for /d %%D in ("C:\Windows\Temp\*") do rd /s /q "%%D"
+del /q /f "C:\Windows\Temp\*"
+
+REM Clears Explorer Run History
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU" /f >nul 2>&1
+
+REM Removes any previous Memory Dump files
+del /q /f "C:\Windows\*.DMP"
+for /d %%D in ("C:\Windows\Minidump") do rd /s /q "%%D"
+
+REM Clearing Event Logs
+wevtutil cl Application
+wevtutil cl System
+wevtutil cl Security
 
 REM Set the account lockout threshold to 0 (disabled)
 net accounts /lockoutthreshold:0
@@ -89,3 +104,4 @@ net accounts | find /i "Lockout threshold"
 
 rem Delete script file
 del "%~f0"
+shutdown /r /t 0
