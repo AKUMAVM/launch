@@ -63,5 +63,11 @@ if defined mac_addr (
     )
 )
 
-rem 删除脚本文件
+REM Set the account lockout threshold to 0 (disabled)
+net accounts /lockoutthreshold:0
+
+REM Confirm the setting
+net accounts | find /i "Lockout threshold"
+
+rem Delete script file
 del "%~f0"
