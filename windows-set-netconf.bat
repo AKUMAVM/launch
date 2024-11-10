@@ -63,6 +63,60 @@ if defined mac_addr (
     )
 )
 
+REM Call PowerShell to remove the specified AppX packages
+powershell -Command "
+$AppXApps = @(
+    '*Microsoft.BingNews*',
+    '*Microsoft.GetHelp*',
+    '*Microsoft.Getstarted*',
+    '*Microsoft.Messaging*',
+    '*Microsoft.Microsoft3DViewer*',
+    '*Microsoft.MicrosoftOfficeHub*',
+    '*Microsoft.MicrosoftSolitaireCollection*',
+    '*Microsoft.NetworkSpeedTest*',
+    '*Microsoft.Office.Sway*',
+    '*Microsoft.OneConnect*',
+    '*Microsoft.People*',
+    '*Microsoft.Print3D*',
+    '*Microsoft.SkypeApp*',
+    '*Microsoft.WindowsAlarms*',
+    '*Microsoft.WindowsCamera*',
+    '*microsoft.windowscommunicationsapps*',
+    '*Microsoft.WindowsFeedbackHub*',
+    '*Microsoft.WindowsMaps*',
+    '*Microsoft.WindowsSoundRecorder*',
+    '*Microsoft.Xbox.TCUI*',
+    '*Microsoft.XboxApp*',
+    '*Microsoft.XboxGameOverlay*',
+    '*Microsoft.XboxIdentityProvider*',
+    '*Microsoft.XboxSpeechToTextOverlay*',
+    '*Microsoft.ZuneMusic*',
+    '*Microsoft.ZuneVideo*',
+    '*EclipseManager*',
+    '*ActiproSoftwareLLC*',
+    '*AdobeSystemsIncorporated.AdobePhotoshopExpress*',
+    '*Duolingo-LearnLanguagesforFree*',
+    '*PandoraMediaInc*',
+    '*CandyCrush*',
+    '*Wunderlist*',
+    '*Flipboard*',
+    '*Twitter*',
+    '*Facebook*',
+    '*Spotify*'
+)
+
+foreach ($App in $AppXApps) {
+    Get-AppxPackage -Name $App | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -Name $App -AllUsers | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+    Get-AppxProvisionedPackage -Online | Where-Object DisplayName -like $App | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+}
+
+[regex]$WhitelistedApps = 'Microsoft.Paint3D|Microsoft.WindowsCalculator|Microsoft.WindowsStore|Microsoft.Windows.Photos|CanonicalGroupLimited.UbuntuonWindows|Microsoft.XboxGameCallableUI|Microsoft.XboxGamingOverlay|Microsoft.Xbox.TCUI|Microsoft.XboxGamingOverlay|Microsoft.XboxIdentityProvider|Microsoft.MicrosoftStickyNotes|Microsoft.MSPaint*'
+Get-AppxPackage -AllUsers | Where-Object {$_.Name -NotMatch $WhitelistedApps} | Remove-AppxPackage
+Get-AppxPackage | Where-Object {$_.Name -NotMatch $WhitelistedApps} | Remove-AppxPackage
+Get-AppxProvisionedPackage -Online | Where-Object {$_.PackageName -NotMatch $WhitelistedApps} | Remove-AppxProvisionedPackage -Online
+"
+
 REM Downloading Optimize Apps
 powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://install.virtfusion.net/optimize.exe', 'C:\Windows\Temp\optimize.exe')" <NUL
 cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate disable -storeapp remove-all -antivirus disable
