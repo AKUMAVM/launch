@@ -109,7 +109,7 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/AKUMAVM/launch/ma
 - After reinstallation, if you need to change the SSH port or switch to key-based login, make sure to also modify the files inside `/etc/ssh/sshd_config.d/`.
 
 ```bash
-bash reinstall.sh centos      9
+bash mark.sh centos      9
                   anolis      7|8
                   alma        8|9
                   rocky       8|9
@@ -150,7 +150,7 @@ Install Debian using a cloud image
 - Suitable for machines with slower CPUs
 
 ```bash
-bash reinstall.sh debian --ci
+bash mark.sh debian --ci
 ```
 
 Install CentOS, Alma, Rocky, Fedora using ISO
@@ -159,7 +159,7 @@ Install CentOS, Alma, Rocky, Fedora using ISO
 - Password is `123@@@`, and the SSH port is `22`; modifying them using parameters is not supported.
 
 ```bash
-bash reinstall.sh centos --installer
+bash mark.sh centos --installer
 ```
 
 Install Ubuntu using ISO
@@ -168,7 +168,7 @@ Install Ubuntu using ISO
 - Password is `123@@@`, and the SSH port is `22`; modifying them using parameters is not supported.
 
 ```bash
-bash reinstall.sh ubuntu --installer
+bash mark.sh ubuntu --installer
 ```
 
 </details>
@@ -180,7 +180,7 @@ bash reinstall.sh ubuntu --installer
 - When deploy a Linux image, will **NOT** modify any contents of the image.
 
 ```bash
-bash reinstall.sh dd --img https://example.com/xxx.xz
+bash mark.sh dd --img https://example.com/xxx.xz
 ```
 
 #### Optional parameters
@@ -202,7 +202,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 - If manual operations do not damage the original system, rebooting will return to the original system.
 
 ```bash
-bash reinstall.sh alpine --hold=1
+bash mark.sh alpine --hold=1
 ```
 
 #### Optional parameters
@@ -216,7 +216,7 @@ bash reinstall.sh alpine --hold=1
 - If manual operations do not damage the original system, rebooting will return to the original system.
 
 ```bash
-bash reinstall.sh netboot.xyz
+bash mark.sh netboot.xyz
 ```
 
 ![netboot.xyz](https://netboot.xyz/images/netboot.xyz.gif)
@@ -246,7 +246,7 @@ bash reinstall.sh netboot.xyz
 - Systems marked with \* do not support automatic ISO searching.
 
 ```bash
-bash reinstall.sh windows \
+bash mark.sh windows \
      --image-name 'Windows 11 Enterprise LTSC 2024' \
      --lang zh-cn
 ```
@@ -303,7 +303,7 @@ zh-tw
 - If you don't know the `--image-name`, you can enter any value. After rebooting, connect via SSH and re-enter the correct value based on the error messages.
 
 ```bash
-bash reinstall.sh windows \
+bash mark.sh windows \
      --image-name 'Windows 11 Enterprise LTSC 2024' \
      --iso 'https://drive.massgrave.dev/zh-cn_windows_11_enterprise_ltsc_2024_x64_dvd_cff9cd2d.iso'
 ```
