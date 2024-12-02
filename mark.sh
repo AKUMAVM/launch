@@ -1976,11 +1976,14 @@ find_main_disk() {
 
         # 检测主硬盘是否横跨多个磁盘
         os_across_disks_count=$(wc -l <<<"$xda")
-        if [ $os_across_disks_count -eq 1 ]; then
-            info "Main disk: $xda"
-        else
-            error_and_exit "OS across $os_across_disks_count disk: $xda"
-        fi
+if [ $os_across_disks_count -eq 1 ]; then
+    info "Main disk: $xda"
+else
+    # Selecting the first disk and reassigning to $xda
+    xda=$(head -n 1 <<<"$xda")
+    warning "OS found across $os_across_disks_count disks. Choosing the first disk: $xda"
+    info "Main disk: $xda"
+fi
 
         # 可以用 dd 找出 guid?
 
