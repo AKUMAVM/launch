@@ -31,6 +31,9 @@ function CopyRight() {
   echo -e "\n"
 }
 
+function Start() {
+  CopyRight
+  
 curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O mark.sh $_
 
 
@@ -82,3 +85,4 @@ curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O
     *) echo "Wrong input!"; exit 1;;
 esac
 }
+Start
