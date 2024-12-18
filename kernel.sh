@@ -63,13 +63,13 @@ curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O
     4) bash mark.sh alpine --password 123@@@ ;;
     5) bash mark.sh centos --password 123@@@ ;;
     6) bash mark.sh kali --password 123@@@ ;;
-    7) bash mark.sh --image-name='Windows 10 Pro' --lang=en-us --password 123@@@ ;;
-    8) bash mark.sh --image-name='Windows 11 Pro' --lang=en-us --password 123@@@ ;;
-    9) bash mark.sh --image-name='Windows Server 2012 R2 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
-    10) bash mark.sh --image-name='Windows Server 2016 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
-    11) bash mark.sh --image-name='Windows Server 2019 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
-    12) bash mark.sh --image-name='Windows Server 2022 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
-    13) bash mark.sh --image-name='Windows Server 2025 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
+    7) bash mark.sh windows --image-name='Windows 10 Pro' --lang=en-us --password 123@@@ ;;
+    8) bash mark.sh windows --image-name='Windows 11 Pro' --lang=en-us --password 123@@@ ;;
+    9) bash mark.sh windows --image-name='Windows Server 2012 R2 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
+    10) bash mark.sh windows --image-name='Windows Server 2016 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
+    11) bash mark.sh windows --image-name='Windows Server 2019 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
+    12) bash mark.sh windows --image-name='Windows Server 2022 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
+    13) bash mark.sh windows --image-name='Windows Server 2025 SERVERDATACENTER' --lang=en-us --password 123@@@ ;;
     14) bash mark.sh netboot.xyz ;;
     99)
       echo -e "\n"
