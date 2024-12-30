@@ -2889,6 +2889,11 @@ create_swap() {
         return
     fi
 
+    if [ -z "$swapsize" ] || [ "$swapsize" -le 0 ]; then
+        echo "Error: Invalid swap size (${swapsize} MB). Setting default to 512 MB."
+        swapsize=512
+    fi
+
     echo "Creating swap file of size ${swapsize} MB at ${swapfile}..."
     if ! fallocate -l "${swapsize}M" "$swapfile"; then
         echo "Error: Unable to allocate space for swap file."
