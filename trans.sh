@@ -2844,26 +2844,61 @@ get_need_swap_size() {
     fi
 }
 
+# create_swap_if_ram_less_than() {
+#    need_ram=$1
+#    swapfile=$2
+#
+#    swapsize=$(get_need_swap_size $need_ram)
+#    if [ $swapsize -gt 0 ]; then
+#        create_swap $swapsize $swapfile
+#    fi
+# }
+
+# create_swap() {
+#    swapsize=$1
+#    swapfile=$2
+#
+#    if ! grep $swapfile /proc/swaps; then
+#        fallocate -l ${swapsize}M $swapfile
+#        chmod 0600 $swapfile
+#        mkswap $swapfile
+#        swapon $swapfile
+#    fi
+# }
+
+# Function to create a swap file if RAM is less than required
 create_swap_if_ram_less_than() {
     need_ram=$1
     swapfile=$2
 
-    swapsize=$(get_need_swap_size $need_ram)
-    if [ $swapsize -gt 0 ]; then
-        create_swap $swapsize $swapfile
+    swapsize=$(get_need_swap_size "$need_ram")
+    if [ "$swapsize" -gt 0 ]; then
+        create_swap "$swapsize" "$swapfile"
+    else
+        echo "No swap needed. Physical RAM is sufficient."
     fi
 }
 
+# Function to create and activate a swap file
 create_swap() {
     swapsize=$1
     swapfile=$2
 
-    if ! grep $swapfile /proc/swaps; then
-        fallocate -l ${swapsize}M $swapfile
-        chmod 0600 $swapfile
-        mkswap $swapfile
-        swapon $swapfile
+    if grep -q "$swapfile" /proc/swaps; then
+        echo "Swap file $swapfile is already active."
+        return
     fi
+
+    echo "Creating swap file of size ${swapsize} MB at ${swapfile}..."
+    if ! fallocate -l "${swapsize}M" "$swapfile"; then
+        echo "Error: Unable to allocate space for swap file."
+        return 1
+    fi
+
+    chmod 0600 "$swapfile"
+    mkswap "$swapfile"
+    swapon "$swapfile"
+    echo "Swap file created and activated."
 }
 
 # arch gentoo 常规安装用
