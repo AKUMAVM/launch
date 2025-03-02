@@ -63,7 +63,7 @@ curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O
     4) bash mark.sh alpine --password 123@@@ ;;
     5) bash mark.sh centos --password 123@@@ ;;
     6) bash mark.sh kali --password 123@@@ ;;
-    7) bash mark.sh windows --image-name='Windows 10 Pro' --lang=en-us --password 123@@@ ;;
+    7) bash mark.sh windows --image-name='Windows 10 Pro' --iso='https://archive.org/download/en-us_windows_10_consumer_editions_version_22h2_updated_feb_2023_x64_dvd_c29e4bb3/en-us_windows_10_consumer_editions_version_22h2_updated_feb_2023_x64_dvd_c29e4bb3.iso' --password Akuma12345 ;;
     8) bash mark.sh windows --image-name='Windows 11 Pro' --lang=en-us --password 123@@@ ;;
     9) bash mark.sh windows --image-name='Windows Server 2012 R2 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195443' --password 123@@@ --allow-ping ;;
     10) bash mark.sh windows --image-name='Windows Server 2016 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195174' --password 123@@@ --allow-ping ;;
