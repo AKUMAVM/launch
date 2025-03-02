@@ -63,12 +63,6 @@ if defined mac_addr (
     )
 )
 
-REM Downloading Optimize Apps
-powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://install.virtfusion.net/optimize.exe', 'C:\Windows\Temp\optimize.exe')" <NUL
-cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate disable -storeapp remove-all -antivirus disable
-cmd /c C:\Windows\Temp\optimize.exe -f 3 4 5 6 9
-del C:\Windows\Temp\optimize.exe
-
 REM Downloading Qemu Agent
 powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.262-2/virtio-win-guest-tools.exe', 'C:\Windows\Temp\virtio-win-guest-tools.exe')" <NUL
 cmd /c C:\Windows\Temp\virtio-win-guest-tools.exe /quiet /norestart
@@ -107,21 +101,27 @@ if exist "%SYSTEMDRIVE%\OneDriveTemp" (
 #del /q /f "C:\Windows\System32\sysprep\Panther\setuperr.log"
 #del /q /f "C:\Windows\System32\sysprep\Panther\IE\setupact.log"
 
-REM Removes Temporary Files
-for /d %%D in ("C:\Windows\Temp\*") do rd /s /q "%%D"
-del /q /f "C:\Windows\Temp\*"
+#REM Removes Temporary Files
+#for /d %%D in ("C:\Windows\Temp\*") do rd /s /q "%%D"
+#del /q /f "C:\Windows\Temp\*"
 
-REM Clears Explorer Run History
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU" /f >nul 2>&1
+#REM Clears Explorer Run History
+#reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU" /f >nul 2>&1
 
 REM Removes any previous Memory Dump files
 del /q /f "C:\Windows\*.DMP"
 for /d %%D in ("C:\Windows\Minidump") do rd /s /q "%%D"
 
-REM Clearing Event Logs
-wevtutil cl Application
-wevtutil cl System
-wevtutil cl Security
+#REM Clearing Event Logs
+#wevtutil cl Application
+#wevtutil cl System
+#wevtutil cl Security
+
+REM Downloading Optimize Apps
+powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://install.virtfusion.net/optimize.exe', 'C:\Windows\Temp\optimize.exe')" <NUL
+cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate disable -storeapp remove-all -antivirus disable
+cmd /c C:\Windows\Temp\optimize.exe -f 3 4 5 6 9
+del C:\Windows\Temp\optimize.exe
 
 REM Set the account lockout threshold to 0 (disabled)
 net accounts /lockoutthreshold:0
