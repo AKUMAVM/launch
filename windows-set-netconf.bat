@@ -96,16 +96,16 @@ if exist "%SYSTEMDRIVE%\OneDriveTemp" (
     rmdir "%SYSTEMDRIVE%\OneDriveTemp" /S /Q
 )
 
-REM Cleanup Profile Usage Information
-for /d %%D in ("C:\Users\Administrator\AppData\Local\Temp\*") do rd /s /q "%%D"
-del /q /f "C:\Users\Administrator\AppData\Local\Temp\*"
-for /d %%D in ("C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Recent\*") do rd /s /q "%%D"
-del /q /f "C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Recent\*"
-for /d %%D in ("C:\Users\Administrator\Downloads\*") do rd /s /q "%%D"
-del /q /f "C:\Users\Administrator\Downloads\*"
-del /q /f "C:\Windows\System32\sysprep\Panther\setupact.log"
-del /q /f "C:\Windows\System32\sysprep\Panther\setuperr.log"
-del /q /f "C:\Windows\System32\sysprep\Panther\IE\setupact.log"
+#REM Cleanup Profile Usage Information
+#for /d %%D in ("C:\Users\Administrator\AppData\Local\Temp\*") do rd /s /q "%%D"
+#del /q /f "C:\Users\Administrator\AppData\Local\Temp\*"
+#for /d %%D in ("C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Recent\*") do rd /s /q "%%D"
+#del /q /f "C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Recent\*"
+#for /d %%D in ("C:\Users\Administrator\Downloads\*") do rd /s /q "%%D"
+#del /q /f "C:\Users\Administrator\Downloads\*"
+#del /q /f "C:\Windows\System32\sysprep\Panther\setupact.log"
+#del /q /f "C:\Windows\System32\sysprep\Panther\setuperr.log"
+#del /q /f "C:\Windows\System32\sysprep\Panther\IE\setupact.log"
 
 REM Removes Temporary Files
 for /d %%D in ("C:\Windows\Temp\*") do rd /s /q "%%D"
