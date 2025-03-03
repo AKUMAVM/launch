@@ -22,11 +22,27 @@ rem win8 pe 没有 powercfg
 call powercfg /s 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
 
 rem 安装 SCSI 驱动
-for %%F in ("X:\drivers\*.inf") do (
-    rem 不要查找 Class=SCSIAdapter 因为有些驱动等号两边有空格
-    find /i "SCSIAdapter" "%%~F" >nul
-    if not errorlevel 1 (
-        drvload "%%~F"
+if exist X:\drivers\ (
+    for /f "delims=" %%F in ('dir /s /b "X:\drivers\*.inf" 2^>nul') do (
+        call :drvload_if_scsi "%%~F"
+    )
+
+    rem 官网写了可以安装但仅会加载关键驱动
+    rem Gcore 的 virtio-gpu 在安装时没有显示
+    rem 即使安装时加载了显卡驱动
+    rem 进入系统后才有显示
+    rem find /i "viogpudo" "%%~F" >nul
+    rem if not errorlevel 1 (
+    rem     drvload "%%~F"
+    rem )
+)
+
+rem 安装自定义 SCSI 驱动
+rem 可以用 forfiles /p X:\custom_drivers /m *.inf /c "cmd /c echo @path"
+rem 不可以用 for %%F in ("X:\custom_drivers\*\*.inf")
+if exist X:\custom_drivers\ (
+    for /f "delims=" %%F in ('dir /s /b "X:\custom_drivers\*.inf" 2^>nul') do (
+        call :drvload_if_scsi "%%~F"
     )
 )
 
@@ -44,9 +60,9 @@ echo list vol | diskpart | find "efi" && (
 )
 
 rem 获取 ProductType
-for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\ProductOptions" /v ProductType') do (
-    set "ProductType=%%a"
-)
+rem for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\ProductOptions" /v ProductType') do (
+rem     set "ProductType=%%a"
+rem )
 
 rem 获取 BuildNumber
 for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
@@ -150,10 +166,12 @@ for %%a in (RAM TPM SecureBoot) do (
 rem 设置
 set ForceOldSetup=0
 set EnableUnattended=1
+set EnableEMS=0
 
 rem 运行 ramdisk X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
+rem 使用 /installfrom 可以解决?
 if "%ForceOldSetup%"=="1" (
     set setup=Y:\sources\setup.exe
 ) else (
@@ -184,9 +202,10 @@ if %BuildNumber% GEQ 26040 if "%ForceOldSetup%"=="0" (
     set ResizeRecoveryPartition=/ResizeRecoveryPartition Disable
 )
 
-rem 为 windows server 打开 EMS
-rem 普通 windows 没有自带 EMS 组件，暂不处理
-if "%ProductType%"=="ServerNT" (
+rem 为 windows server 打开 EMS/SAC
+rem 普通 windows 没有自带 SAC 组件，暂不处理
+rem 现在通过 trans.sh 准确检测系统是否有 SAC 组件，有则修改 EnableEMS 变量打开 EMS
+if "%EnableEMS%"=="1" (
     rem set EMS=/EMSPort:UseBIOSSettings /EMSBaudRate:115200
     set EMS=/EMSPort:COM1 /EMSBaudRate:115200
 )
@@ -213,4 +232,12 @@ exit /b
 
 :createPageFileOnZ
 wpeutil CreatePageFile /path=Z:\pagefile.sys /size=512
+exit /b
+
+:drvload_if_scsi
+rem 不要查找 Class=SCSIAdapter 因为有些驱动等号两边有空格
+find /i "SCSIAdapter" "%~1" >nul
+if not errorlevel 1 (
+    drvload "%~1"
+)
 exit /b
