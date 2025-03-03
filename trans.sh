@@ -2,15 +2,13 @@
 # shellcheck shell=dash
 # shellcheck disable=SC2086,SC3047,SC3036,SC3010,SC3001,SC3060
 # alpine 默认使用 busybox ash
-# 注意 bash 和 ash 以下语句结果不同
-# [[ a = '*a' ]] && echo 1
 
 # 出错后停止运行，将进入到登录界面，防止失联
 set -eE
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 # shellcheck disable=SC2034
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0003
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
 
 TRUE=0
 FALSE=1
@@ -20,28 +18,13 @@ error() {
     color='\e[31m'
     plain='\e[0m'
     echo -e "${color}***** ERROR *****${plain}" >&2
-    echo -e "${color}$*${plain}" >&2
+    echo -e "${color}Error: $*${plain}" >&2
 }
 
 info() {
     color='\e[32m'
     plain='\e[0m'
-    local msg
-
-    if [ "$1" = false ]; then
-        shift
-        msg=$*
-    else
-        msg=$(echo "$*" | to_upper)
-    fi
-
-    echo -e "${color}***** $msg *****${plain}" >&2
-}
-
-warn() {
-    color='\e[33m'
-    plain='\e[0m'
-    echo -e "${color}Warning: $*${plain}" >&2
+    echo -e "${color}***** $(echo "$*" | to_upper) *****${plain}" >&2
 }
 
 error_and_exit() {
@@ -99,13 +82,12 @@ wget() {
 }
 
 is_have_cmd() {
-    # command -v 包括脚本里面的方法
-    is_have_cmd_on_disk / "$1"
+    command -v "$1" >/dev/null
 }
 
 is_have_cmd_on_disk() {
-    local os_dir=$1
-    local cmd=$2
+    os_dir=$1
+    cmd=$2
 
     for bin_dir in /bin /sbin /usr/bin /usr/sbin; do
         if [ -f "$os_dir$bin_dir/$cmd" ]; then
@@ -115,20 +97,9 @@ is_have_cmd_on_disk() {
     return 1
 }
 
-is_num() {
-    echo "$1" | grep -Exq '[0-9]*\.?[0-9]*'
-}
-
 retry() {
-    local max_try=$1
+    max_try=$1
     shift
-
-    if is_num "$1"; then
-        local interval=$1
-        shift
-    else
-        local interval=5
-    fi
 
     for i in $(seq $max_try); do
         if "$@"; then
@@ -138,21 +109,9 @@ retry() {
             if [ $i -ge $max_try ]; then
                 return $ret
             fi
-            sleep $interval
+            sleep 1
         fi
     done
-}
-
-get_url_type() {
-    if [[ "$1" = magnet:* ]]; then
-        echo bt
-    else
-        echo http
-    fi
-}
-
-is_magnet_link() {
-    [[ "$1" = magnet:* ]]
 }
 
 download() {
@@ -166,17 +125,26 @@ download() {
     # https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-o
 
     # 构造 aria2 参数
-    save=
-    # 文件夹
-    if [[ "$path" = '/*' ]]; then
-        save="$save -d /"
+    # 没有指定文件名的情况
+    if [ -z "$path" ]; then
+        save=""
+    else
+        # 文件名是绝对路径
+        if [[ "$path" = '/*' ]]; then
+            save="-d / -o $path"
+        else
+            # 文件名是相对路径
+            save="-o $path"
+        fi
     fi
-    # 文件名
-    if [ -n "$path" ]; then
-        case "$(get_url_type "$url")" in
-        http) save="$save -o $path" ;;
-        bt) save="$save -O 1=$path" ;;
-        esac
+
+    if ! is_have_cmd aria2c; then
+        apk add aria2
+    fi
+
+    # stdbuf 在 coreutils 包里面
+    if ! is_have_cmd stdbuf; then
+        apk add coreutils
     fi
 
     # 阿里云源限速，而且检测 user-agent 禁止 axel/aria2 下载
@@ -194,18 +162,13 @@ download() {
     # fi
 
     # --user-agent=Wget/1.21.1 \
-    # --retry-wait 5
 
-    # 检测大小时已经下载了种子
-    if [ "$(get_url_type "$url")" = bt ]; then
-        torrent="$(get_torrent_path_by_magnet $url)"
-        if ! [ -f "$torrent" ]; then
-            download_torrent_by_magnet "$url" "$torrent"
-        fi
-        url=$torrent
-    fi
-
-    aria2c $save "$url"
+    echo "$url"
+    retry 5 stdbuf -oL -eL aria2c -x4 \
+        --allow-overwrite=true \
+        --summary-interval=0 \
+        --max-tries 1 \
+        $save "$url"
 }
 
 update_part() {
@@ -213,9 +176,8 @@ update_part() {
     sync
 
     # partprobe
-    # 有分区挂载中会报 Resource busy 错误
     if is_have_cmd partprobe; then
-        partprobe /dev/$xda 2>/dev/null || true
+        partprobe /dev/$xda 2>/dev/null
     fi
 
     # partx
@@ -230,8 +192,7 @@ update_part() {
     # 因此要先停止 mdev 服务
     # 还要删除 /dev/$xda*?
     ensure_service_stopped mdev
-    # 即使停止了 mdev，有时也会报 Directory not empty，因此添加 retry
-    retry 5 rm -rf /dev/disk/*
+    rm -rf /dev/disk/*
 
     # 没挂载 modloop 时会提示
     # modprobe: can't change directory to '/lib/modules': No such file or directory
@@ -425,7 +386,7 @@ mod_motd() {
         cp $file $file.orig
         # shellcheck disable=SC2016
         echo "mv "\$mnt$file.orig" "\$mnt$file"" |
-            insert_into_file "$(which setup-disk)" before 'cleanup_chroot_mounts "\$mnt"'
+            insert_into_file /sbin/setup-disk before 'cleanup_chroot_mounts "\$mnt"'
 
         cat <<EOF >$file
 Reinstalling...
@@ -438,7 +399,7 @@ EOF
 umount_all() {
     dirs="/mnt /os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root /nix"
     regex=$(echo "$dirs" | sed 's, ,|,g')
-    if mounts=$(mount | grep -Ew "on $regex" | awk '{print $3}' | tac); then
+    if mounts=$(mount | grep -Ew "$regex" | awk '{print $3}' | tac); then
         for mount in $mounts; do
             echo "umount $mount"
             umount $mount
@@ -637,28 +598,15 @@ is_staticv6() {
     return 1
 }
 
-is_dhcpv6_or_slaac() {
-    get_netconf_to dhcpv6_or_slaac
+should_disable_ra_slaac() {
+    get_netconf_to should_disable_ra_slaac
     # shellcheck disable=SC2154
-    [ "$dhcpv6_or_slaac" = 1 ]
-}
-
-should_disable_accept_ra() {
-    get_netconf_to should_disable_accept_ra
-    # shellcheck disable=SC2154
-    [ "$should_disable_accept_ra" = 1 ]
-}
-
-should_disable_autoconf() {
-    get_netconf_to should_disable_autoconf
-    # shellcheck disable=SC2154
-    [ "$should_disable_autoconf" = 1 ]
+    [ "$should_disable_ra_slaac" = 1 ]
 }
 
 is_slaac() {
-    # 如果是静态（包括自动获取到 IP 但无法联网而切换成静态）直接返回 1，不考虑 ra
     # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
-    if ! is_dhcpv6_or_slaac; then
+    if should_disable_ra_slaac; then
         return 1
     fi
     get_netconf_to slaac
@@ -667,9 +615,8 @@ is_slaac() {
 }
 
 is_dhcpv6() {
-    # 如果是静态（包括自动获取到 IP 但无法联网而切换成静态）直接返回 1，不考虑 ra
     # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
-    if ! is_dhcpv6_or_slaac; then
+    if should_disable_ra_slaac; then
         return 1
     fi
     get_netconf_to dhcpv6
@@ -769,18 +716,8 @@ to_lower() {
     tr '[:upper:]' '[:lower:]'
 }
 
-del_cr() {
-    sed 's/\r//g'
-}
-
 del_empty_lines() {
     sed '/^[[:space:]]*$/d'
-}
-
-del_head_empty_lines_inplace() {
-    # 从第一行直到找到 ^[:space:]
-    # 这个区间内删除所有空行
-    sed -i '1,/[^[:space:]]/ { /^[[:space:]]*$/d }' "$@"
 }
 
 get_part_num_by_part() {
@@ -942,26 +879,15 @@ EOF
     # ethx
     for ethx in $(get_eths); do
         mode=auto
-        # shellcheck disable=SC2154
-        if false; then
-            if { [ "$distro" = debian ] && [ "$releasever" -ge 12 ]; } ||
-                [ "$distro" = kali ]; then
-                # alice + allow-hotplug 会有问题
-                # 问题 1 debian 9/10/11/12:
-                # 如果首次启动时，/etc/networking/interfaces 的 ethx 跟安装时不同
-                # 即使启动 networking 服务前成功执行了 fix-eth-name.sh ，网卡也不会启动
-                # 测试方法: 安装时手动修改 /etc/networking/interfaces enp3s0 为其他名字
-                # 问题 2 debian 9/10/11:
-                # 重启系统后会自动启动网卡，但运行 systemctl restart networking 会关闭网卡
-                # 可能的原因: /lib/systemd/system/networking.service 没有 hotplug 相关内容，而 debian 12+ 有
-                if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
-                    mode=allow-hotplug
-                fi
+        enpx=
+        if is_distro_like_debian; then
+            if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
+                mode=allow-hotplug
             fi
 
-            # if is_have_cmd udevadm; then
-            #     enpx=$(udevadm test-builtin net_id /sys/class/net/$ethx 2>&1 | grep ID_NET_NAME_PATH= | cut -d= -f2)
-            # fi
+            if is_have_cmd udevadm; then
+                enpx=$(udevadm test-builtin net_id /sys/class/net/$ethx 2>&1 | grep ID_NET_NAME_PATH= | cut -d= -f2)
+            fi
         fi
 
         # dmit debian 普通内核和云内核网卡名不一致，因此需要 rename
@@ -971,12 +897,11 @@ EOF
         # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=928923
 
         # 头部
-        get_netconf_to mac_addr
         {
             echo
-            # 这是标记，fix-eth-name 要用，不要删除
-            # shellcheck disable=SC2154
-            echo "# mac $mac_addr"
+            if [ -n "$enpx" ] && [ "$enpx" != "$ethx" ]; then
+                echo rename $enpx=$ethx
+            fi
             echo $mode $ethx
         } >>$conf_file
 
@@ -1017,21 +942,6 @@ iface $ethx inet6 static
     address $ipv6_addr
     gateway $ipv6_gateway
 EOF
-            # debian 9
-            # ipv4 支持静态 onlink 网关
-            # ipv6 不支持静态 onlink 网关，需使用 post-up 添加，未测试动态
-            # ipv6 也不支持直接 ip route add default via xxx onlink
-            if [ "$distro" = debian ] && [ "$releasever" -le 9 ]; then
-                # debian 添加 gateway 失败时不会执行 post-up
-                # 因此 gateway post-up 只能二选一
-
-                # 注释最后一行，也就是 gateway
-                sed -Ei '$s/^( *)/\1# /' "$conf_file"
-                cat <<EOF >>$conf_file
-    post-up ip route add $ipv6_gateway dev $ethx
-    post-up ip route add default via $ipv6_gateway dev $ethx
-EOF
-            fi
         fi
 
         # dns
@@ -1045,7 +955,7 @@ EOF
         fi
 
         # 禁用 ra
-        if should_disable_accept_ra; then
+        if should_disable_ra_slaac; then
             if [ "$distro" = alpine ]; then
                 cat <<EOF >>$conf_file
     pre-up echo 0 >/proc/sys/net/ipv6/conf/$ethx/accept_ra
@@ -1056,24 +966,7 @@ EOF
 EOF
             fi
         fi
-
-        # 禁用 autoconf
-        if should_disable_autoconf; then
-            if [ "$distro" = alpine ]; then
-                cat <<EOF >>$conf_file
-    pre-up echo 0 >/proc/sys/net/ipv6/conf/$ethx/autoconf
-EOF
-            else
-                cat <<EOF >>$conf_file
-    autoconf 0
-EOF
-            fi
-        fi
     done
-}
-
-newline_to_comma() {
-    tr '\n' ','
 }
 
 space_to_newline() {
@@ -1200,17 +1093,15 @@ EOF
     # fi
     # ...
 
-    # 禁用 ra/autoconf
-    local mode=1
+    # 禁用 ra
     for ethx in $(get_eths); do
-        if should_disable_accept_ra; then
-            case "$mode" in
-            1)
+        if should_disable_ra_slaac; then
+            mode=1
+            if [ "$mode" = 1 ]; then
                 cat <<EOF >>$conf_file
 boot.kernel.sysctl."net.ipv6.conf.$ethx.accept_ra" = false;
 EOF
-                ;;
-            2)
+            elif [ "$mode" = 2 ]; then
                 # nixos 配置静态 ip 时用的是脚本
                 # 好像因此不起作用
                 cat <<EOF >>$conf_file
@@ -1220,8 +1111,7 @@ networking.dhcpcd.extraConfig =
       ipv6ra_noautoconf
   '';
 EOF
-                ;;
-            3)
+            elif [ "$mode" = 3 ]; then
                 # 暂时没用到 networkd
                 cat <<EOF >>$conf_file
 systemd.network.networks.$ethx = {
@@ -1231,38 +1121,19 @@ systemd.network.networks.$ethx = {
    };
  };
 EOF
-                ;;
-            esac
-        fi
-
-        if should_disable_autoconf; then
-            case "$mode" in
-            1)
-                cat <<EOF >>$conf_file
-boot.kernel.sysctl."net.ipv6.conf.$ethx.autoconf" = false;
-EOF
-                ;;
-            2) ;;
-            3) ;;
-            esac
+            fi
         fi
     done
+
 }
 
 install_alpine() {
     info "install alpine"
 
-    need_ram=512
-    swap_size=$(get_need_swap_size $need_ram)
-    [ "$swap_size" -gt 0 ] && hack_lowram=true || hack_lowram=false
+    hack_lowram_modloop=true
+    hack_lowram_swap=true
 
-    # alpine 安装时会自动检测安装需要的 firmware
-    # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
-    # 但如果没有 modloop 则无法检测
-    # 所以删除 modloop 前先记录用到的 firmware 包
-    fw_pkgs=$(get_alpine_firmware_pkgs)
-
-    if $hack_lowram; then
+    if $hack_lowram_modloop; then
         # 预先加载需要的模块
         if rc-service -q modloop status; then
             modules="ext4 vfat nls_utf8 nls_cp437"
@@ -1285,8 +1156,8 @@ install_alpine() {
     mount_part_basic_layout /os /os/boot/efi
 
     # 创建 swap
-    if $hack_lowram; then
-        create_swap $swap_size /os/swapfile
+    if $hack_lowram_swap; then
+        create_swap 256 /os/swapfile
     fi
 
     # 网络配置
@@ -1304,7 +1175,7 @@ install_alpine() {
     rc-update add hwclock boot
 
     # 通过 setup-alpine 安装会启用以下几个服务
-    # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-alpine.in#L229
+    # https://github.com/alpinelinux/alpine-conf/blob/c5131e9a038b09881d3d44fb35e86851e406c756/setup-alpine.in#L189
 
     # boot
     rc-update add networking boot
@@ -1334,7 +1205,7 @@ install_alpine() {
     # 防止部分机器不会 fallback 到 bootx64.efi
     if is_efi; then
         apk add efibootmgr
-        sed -i 's/--no-nvram//' "$(which setup-disk)"
+        sed -i 's/--no-nvram//' /sbin/setup-disk
     fi
 
     # 安装到硬盘
@@ -1344,20 +1215,13 @@ install_alpine() {
     export BOOTLOADER="grub"
     setup-disk -m sys -k $kernel_flavor /os
 
-    # 删除 setup-disk 时自动安装的包
-    apk del e2fsprogs dosfstools efibootmgr grub*
-
     # 安装到硬盘后才安装各种应用
     # 避免占用 Live OS 内存
 
     # 网络
-    # udhcpc
-    # 坑1 ip -4 addr 无法知道是否是 dhcp
-    # 坑2 networking 服务不会运行 udhcpc6
-    # 坑3 h3c 移动云电脑 udhcpc6 无法获取 dhcpv6
-
-    # dhcpcd
-    # 坑1 slaac默认开了隐私保护，造成ip和后台面板不一致
+    # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
+    # 坑2 udhcpc不支持dhcpv6
+    # 坑3 dhcpcd的slaac默认开了隐私保护，造成ip和后台面板不一致
 
     # slaac方案1: udhcpc + rdnssd
     # slaac方案2: dhcpcd + 关闭隐私保护
@@ -1378,32 +1242,28 @@ install_alpine() {
     chroot /os setup-timezone -i Asia/Shanghai
     chroot /os setup-ntp chrony || true
 
-    # 下载 fix-eth-name
-    download "$confhome/fix-eth-name.sh" /os/fix-eth-name.sh
-    download "$confhome/fix-eth-name.initd" /os/etc/init.d/fix-eth-name
-    chmod +x /os/etc/init.d/fix-eth-name
-    chroot /os rc-update add fix-eth-name boot
-
-    # 安装固件微码会触发 grub-probe
-    # 如果没挂载会报错
-    # Executing grub-2.12-r5.trigger
-    # /usr/sbin/grub-probe: error: failed to get canonical path of `/dev/vda1'.
-    # ERROR: grub-2.12-r5.trigger: script exited with error 1
-    mount_pseudo_fs /os
-
-    # setup-disk 会自动选择固件，但不包括微码？
-    # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
-    if fw_pkgs="$fw_pkgs $(get_ucode_firmware_pkgs)" && [ -n "$fw_pkgs" ]; then
-        chroot /os apk add $fw_pkgs
+    # 安装固件微码
+    # shellcheck disable=SC2046
+    if is_need_ucode_firmware; then
+        chroot /os apk add $(get_ucode_firmware_pkgs)
     fi
 
     # 3.19 或以上，非 efi 需要手动安装 grub
     if ! is_efi; then
-        chroot /os grub-install --target=i386-pc /dev/$xda
+        grub-install --boot-directory=/os/boot --target=i386-pc /dev/$xda
     fi
 
     # efi grub 添加 fwsetup 条目
-    chroot /os update-grub
+    if is_efi; then
+        mount_pseudo_fs /os
+        chroot /os update-grub
+    fi
+
+    # 删除 chroot 历史记录
+    rm -rf /os/root/.ash_history
+
+    # 关闭 swap 前删除应用，避免占用内存
+    apk del e2fsprogs dosfstools grub*
 
     # 是否保留 swap
     if [ -e /os/swapfile ]; then
@@ -1471,9 +1331,7 @@ install_nixos() {
 
     # 挂载分区，创建 swapfile
     mount_part_basic_layout /os /os/efi
-    if [ "$swap_size" -gt 0 ]; then
-        create_swap "$swap_size" /os/swapfile
-    fi
+    create_swap $swap_size /os/swapfile
 
     # 步骤
     # 1. 安装 nix (nix-xxx)
@@ -1580,7 +1438,7 @@ install_nixos() {
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
 
-    del_empty_lines <<EOF | add_space 2 | add_newline both |
+    add_space 2 <<EOF | del_empty_lines | add_newline both |
 ############### Add by reinstall.sh ###############
 $nix_bootloader
 $nix_swap
@@ -1668,84 +1526,8 @@ EOF
     show_nixos_config
 }
 
-add_fix_eth_name_systemd_service() {
-    os_dir=$1
-
-    # 无需执行 systemctl daemon-reload
-    # 因为 chroot 下执行会提示 Running in chroot, ignoring command 'daemon-reload'
-    download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
-    download "$confhome/fix-eth-name.service" "$os_dir/etc/systemd/system/fix-eth-name.service"
-    chroot "$os_dir" systemctl enable fix-eth-name
-
-    # aosc 首次开机会执行 preset-all
-    # 因此需要设置 fix-eth-name 的 preset 状态
-    # 不然首次开机 /etc/systemd/system/multi-user.target.wants/fix-eth-name.service 会被删除
-    # 通常 /etc/systemd/system-preset/ 文件夹要新建，因此不放在这里
-    echo 'enable fix-eth-name.service' >"$os_dir/usr/lib/systemd/system-preset/01-fix-eth-name.preset"
-}
-
-basic_init() {
-    os_dir=$1
-
-    # 此时不能用
-    # chroot $os_dir timedatectl set-timezone Asia/Shanghai
-    # Failed to create bus connection: No such file or directory
-
-    # debian 11 没有 systemd-firstboot
-    if is_have_cmd_on_disk $os_dir systemd-firstboot; then
-        if chroot $os_dir systemd-firstboot --help | grep -wq '\--force'; then
-            chroot $os_dir systemd-firstboot --timezone=Asia/Shanghai --force
-        else
-            chroot $os_dir systemd-firstboot --timezone=Asia/Shanghai
-        fi
-    fi
-
-    # gentoo 不会自动创建 machine-id
-    clear_machine_id $os_dir
-
-    # sshd
-    chroot $os_dir ssh-keygen -A
-
-    sshd_enabled=false
-    sshs="sshd.service ssh.service sshd.socket ssh.socket"
-    for i in $sshs; do
-        if chroot $os_dir systemctl -q is-enabled $i; then
-            sshd_enabled=true
-            break
-        fi
-    done
-    if ! $sshd_enabled; then
-        for i in $sshs; do
-            if chroot $os_dir systemctl -q enable $i; then
-                break
-            fi
-        done
-    fi
-
-    allow_root_password_login $os_dir
-    allow_password_login $os_dir
-    if is_need_change_ssh_port; then
-        change_ssh_port $os_dir $ssh_port
-    fi
-
-    # 修改密码
-    change_root_password $os_dir
-
-    # 下载 fix-eth-name.service
-    # 即使开了 net.ifnames=0 也需要
-    # 因为 alpine live 和目标系统的网卡顺序可能不同
-    add_fix_eth_name_systemd_service $os_dir
-}
-
-install_arch_gentoo_aosc() {
+install_arch_gentoo() {
     info "install $distro"
-
-    network_app=$(
-        case "$distro" in
-        arch | gentoo) echo systemd-networkd ;;
-        aosc) echo network-manager ;;
-        esac
-    )
 
     set_locale() {
         echo "C.UTF-8 UTF-8" >>$os_dir/etc/locale.gen
@@ -1815,8 +1597,9 @@ EOF
         fi
 
         # firmware + microcode
-        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
-            chroot $os_dir pacman -Syu --noconfirm $fw_pkgs
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot $os_dir pacman -Syu --noconfirm $(get_ucode_firmware_pkgs)
         fi
 
         # arm 的内核有多种选择，默认是 linux-aarch64，所以要添加 --noconfirm
@@ -1829,13 +1612,13 @@ EOF
         create_swap_if_ram_less_than 2048 $os_dir/swapfile
 
         # 解压系统
-        apk add tar xz pv
+        apk add tar xz
         # shellcheck disable=SC2154
         download "$img" $os_dir/gentoo.tar.xz
         echo "Uncompressing Gentoo..."
-        pv -f $os_dir/gentoo.tar.xz | tar xpJ --numeric-owner --xattrs-include='*.*' -C $os_dir
+        tar xpf $os_dir/gentoo.tar.xz -C $os_dir --xattrs-include='*.*' --numeric-owner
         rm $os_dir/gentoo.tar.xz
-        apk del tar xz pv
+        apk del tar xz
 
         # dns
         cp_resolv_conf $os_dir
@@ -1932,8 +1715,9 @@ EOF
         fi
 
         # firmware + microcode
-        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
-            chroot $os_dir emerge $fw_pkgs
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot $os_dir emerge $(get_ucode_firmware_pkgs)
         fi
 
         # 安装 grub + 内核
@@ -1942,22 +1726,6 @@ EOF
         echo GRUB_PLATFORMS=\"$grub_platforms\" >>$os_dir/etc/portage/make.conf
         echo "sys-kernel/installkernel dracut grub" >$os_dir/etc/portage/package.use/installkernel
         chroot $os_dir emerge sys-kernel/gentoo-kernel-bin
-    }
-
-    install_aosc() {
-        # 解压系统
-        apk add wget tar xz
-        wget "$img" -O- | tar xpJ --numeric-owner --xattrs-include='*.*' -C $os_dir
-        apk del wget tar xz
-
-        # 添加 swap
-        create_swap_if_ram_less_than 1024 $os_dir/swapfile
-
-        # 挂载伪文件系统
-        mount_pseudo_fs $os_dir
-
-        # 生成 initramfs
-        chroot $os_dir update-initramfs
     }
 
     os_dir=/os
@@ -1979,56 +1747,8 @@ EOF
     # 此时不能用
     # chroot $os_dir timedatectl set-timezone Asia/Shanghai
     chroot $os_dir systemd-firstboot --force --timezone=Asia/Shanghai
-    # gentoo 不会自动创建 machine-id
-    clear_machine_id $os_dir
-
-    # 网络配置
-    case "$network_app" in
-    systemd-networkd)
-        chroot $os_dir systemctl enable systemd-networkd
-        chroot $os_dir systemctl enable systemd-resolved
-
-        apk add cloud-init
-        # 第二次运行会报错
-        useradd systemd-network || true
-        create_cloud_init_network_config net.cfg
-        cat -n net.cfg
-        # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
-        cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
-        cp out/etc/systemd/network/10-cloud-init-eth*.network $os_dir/etc/systemd/network/
-
-        # 删除网卡名匹配
-        sed -i '/^Name=/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
-
-        # 删除 Generated by cloud-init. Changes will be lost.
-        # 并删除头部的空行
-        sed -i '/^# Generated by cloud-init/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
-        del_head_empty_lines_inplace $os_dir/etc/systemd/network/10-cloud-init-eth*.network
-
-        # 清理
-        rm -rf net.cfg out
-        apk del cloud-init
-
-        # 显示网络配置
-        cat -n $os_dir/etc/systemd/network/10-cloud-init-eth*.network
-        ;;
-    network-manager)
-        chroot $os_dir systemctl enable NetworkManager
-
-        # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
-        create_cloud_init_network_config /net.cfg
-        create_network_manager_config /net.cfg "$os_dir"
-        rm /net.cfg
-        ;;
-    esac
-
-    # 修正网卡名
-    add_fix_eth_name_systemd_service $os_dir
-
-    # arch gentoo 网络配置是用 alpine cloud-init 生成的
-    # cloud-init 版本够新，因此无需修复 onlink 网关
-
-    # ssh
+    chroot $os_dir systemctl enable systemd-networkd
+    chroot $os_dir systemctl enable systemd-resolved
     chroot $os_dir systemctl enable sshd
     allow_root_password_login $os_dir
     if is_need_change_ssh_port; then
@@ -2037,6 +1757,29 @@ EOF
 
     # 修改密码
     change_root_password $os_dir
+
+    # 网络配置
+    apk add cloud-init
+    # 第二次运行会报错
+    useradd systemd-network || true
+    create_cloud_init_network_config net.cfg
+    # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
+    cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
+    cp out/etc/systemd/network/10-cloud-init-eth*.network $os_dir/etc/systemd/network/
+    rm -rf out
+
+    # 删除网卡名匹配
+    sed -i '/^Name=/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
+    rm -rf net.cfg
+    apk del cloud-init
+
+    # 修复 onlink 网关
+    if is_staticv4 || is_staticv6; then
+        fix_sh=cloud-init-fix-onlink.sh
+        download $confhome/$fix_sh $os_dir/$fix_sh
+        chroot $os_dir bash /$fix_sh
+        rm -f $os_dir/$fix_sh
+    fi
 
     # ntp 用 systemd 自带的
     # TODO: vm agent + 随机数生成器
@@ -2052,19 +1795,18 @@ EOF
 
     # cmdline + 生成 grub.cfg
     if [ -d $os_dir/etc/default/grub.d ]; then
-        file=$os_dir/etc/default/grub.d/tty.cfg
+        file=$os_dir/etc/default/grub.d/cmdline.conf
     else
         file=$os_dir/etc/default/grub
     fi
     ttys_cmdline=$(get_ttys console=)
-    echo GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $ttys_cmdline\" >>$file
+    echo GRUB_CMDLINE_LINUX=\"$ttys_cmdline\" >>$file
     chroot $os_dir grub-mkconfig -o /boot/grub/grub.cfg
 
     # fstab
     # fstab 可不写 efi 条目， systemd automount 会自动挂载
-    # fstab 头部有使用说明，因此用 >>
     apk add arch-install-scripts
-    genfstab -U $os_dir | sed '/swap/d' >>$os_dir/etc/fstab
+    genfstab -U $os_dir | sed '/swap/d' >$os_dir/etc/fstab
     apk del arch-install-scripts
 
     # 删除 resolv.conf，不然 systemd-resolved 无法创建软链接
@@ -2081,96 +1823,6 @@ get_http_file_size() {
     # 网址重定向可能得到多个 Content-Length, 选最后一个
     wget --spider -S "$url" 2>&1 | grep 'Content-Length:' |
         tail -1 | awk '{print $2}' | grep .
-}
-
-get_url_hash() {
-    url=$1
-
-    echo "$url" | md5sum | awk '{print $1}'
-}
-
-aria2c() {
-    if ! is_have_cmd aria2c; then
-        apk add aria2
-    fi
-
-    # stdbuf 在 coreutils 包里面
-    if ! is_have_cmd stdbuf; then
-        apk add coreutils
-    fi
-
-    # 指定 bt 种子时没有链接，因此忽略错误
-    echo "$@" | grep -o '(http|https|magnet):[^ ]*' || true
-
-    # 下载 tracker
-    # 在 sub shell 里面无法保存变量，因此写入到文件
-    if echo "$@" | grep -Eq 'magnet:|\.torrent' && ! [ -f "/tmp/trackers" ]; then
-        # 独自一行下载，不然下载失败不会报错
-        # 里面有空行
-        # txt=$(wget -O- https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt | grep .)
-        # txt=$(wget -O- https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt | grep .)
-        txt=$(wget -O- https://cf.trackerslist.com/best.txt | grep .)
-        # sed 删除最后一个逗号
-        echo "$txt" | newline_to_comma | sed 's/,$//' >/tmp/trackers
-    fi
-
-    # --dht-entry-point=router.bittorrent.com:6881 \
-    # --dht-entry-point=dht.transmissionbt.com:6881 \
-    # --dht-entry-point=router.utorrent.com:6881 \
-    retry 5 5 stdbuf -oL -eL aria2c \
-        -x4 \
-        --seed-time=0 \
-        --allow-overwrite=true \
-        --summary-interval=0 \
-        --max-tries 1 \
-        --bt-tracker="$([ -f "/tmp/trackers" ] && cat /tmp/trackers)" \
-        "$@"
-}
-
-download_torrent_by_magnet() {
-    url=$1
-    dst=$2
-
-    url_hash=$(get_url_hash "$url")
-
-    mkdir -p /tmp/bt/$url_hash
-
-    # 不支持 -o bt.torrent 指定文件名
-    aria2c "$url" \
-        --bt-metadata-only=true \
-        --bt-save-metadata=true \
-        -d /tmp/bt/$url_hash
-
-    mv /tmp/bt/$url_hash/*.torrent "$dst"
-    rm -rf /tmp/bt/$url_hash
-}
-
-get_torrent_path_by_magnet() {
-    echo "/tmp/bt/$(get_url_hash "$1").torrent"
-}
-
-get_bt_file_size() {
-    url=$1
-
-    torrent="$(get_torrent_path_by_magnet $url)"
-    download_torrent_by_magnet "$url" "$torrent" >&2
-
-    # 列出第一个文件的大小
-    # idx|path/length
-    # ===+===========================================================================
-    #   1|./zh-cn_windows_11_consumer_editions_version_24h2_updated_jan_2025_x64_dvd_7a8e5a29.iso
-    #    |6.1GiB (6,557,558,784)
-
-    aria2c --show-files=true "$torrent" |
-        grep -F -A1 '  1|./' | tail -1 | grep -o '(.*)' | sed -E 's/[(),]//g' | grep .
-}
-
-get_link_file_size() {
-    if is_magnet_link "$1" >&2; then
-        get_bt_file_size "$1"
-    else
-        get_http_file_size "$1"
-    fi
 }
 
 pipe_extract() {
@@ -2256,7 +1908,7 @@ create_part() {
     # xda*1 星号用于 nvme0n1p1 的字母 p
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
-        if ! size_bytes=$(get_link_file_size "$iso"); then
+        if ! size_bytes=$(get_http_file_size "$iso"); then
             # 默认值，最大的iso 23h2 假设 7g
             size_bytes=$((7 * 1024 * 1024 * 1024))
         fi
@@ -2267,7 +1919,6 @@ create_part() {
         # 1. vista/2008 不能删除 boot.wim
         # 2. 下载镜像前不知道是 vista/2008，因为 --image-name 可以随便输入
         # 因此还是要额外添加 200m
-        # 注意这里单位要用 MiB，因为后面的 border 要以 MiB 计算
         part_size="$((size_bytes / 1024 / 1024 + 200))MiB"
 
         apk add ntfs-3g-progs
@@ -2292,64 +1943,25 @@ create_part() {
             mkfs.ntfs -f -F -L installer /dev/$xda*4              #4 installer
         else
             # bios + mbr 启动盘最大可用 2t
-            if is_xda_gt_2t; then
-                border=$((2 * 1024 * 1024 - ${part_size%MiB}))MiB
-                max_usable_size=2TiB
-            else
-                border=-${part_size}
-                max_usable_size=100%
-            fi
+            is_xda_gt_2t && max_usable_size=2TiB || max_usable_size=100%
             parted /dev/$xda -s -- \
                 mklabel msdos \
-                mkpart primary ntfs 1MiB ${border} \
-                mkpart primary ntfs ${border} ${max_usable_size} \
+                mkpart primary ntfs 1MiB -${part_size} \
+                mkpart primary ntfs -${part_size} ${max_usable_size} \
                 set 1 boot on
             update_part
 
             mkfs.ntfs -f -F -L os /dev/$xda*1        #1 os
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
-    elif [ "$distro" = fnos ]; then
-        # 先用 100% 分区安装后再缩小没意义，因为小硬盘用 100% 还是装不了
-        # 因此直接用用户输入的分区大小
-
-        # 1. 官方安装器对系统盘大小的定义包含引导分区大小
-        # 2. 官方用的是 100M 而不是 100MiB
-
-        # 需关闭这几个特性，否则 grub 无法识别
-        ext4_opts="-O ^metadata_csum_seed,^orphan_file"
-        if is_efi; then
-            parted /dev/$xda -s -- \
-                mklabel gpt \
-                mkpart BOOT fat32 1MiB 100M \
-                mkpart SYSTEM ext4 100M ${fnos_part_size}iB \
-                set 1 esp on
-            update_part
-
-            mkfs.fat /dev/$xda*1                #1 efi
-            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
-        else
-            # bios
-            # 官方安装器不支持 bios + >2t
-            parted /dev/$xda -s -- \
-                mklabel msdos \
-                mkpart primary 1MiB 100M \
-                mkpart primary 100M ${fnos_part_size}iB \
-                set 2 boot on
-            update_part
-
-            echo                                #1 官方安装有这个分区
-            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
-        fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
         # 这几个系统不使用dd，而是复制文件
-        if [ "$distro" = centos ] || [ "$distro" = almalinux ] || [ "$distro" = rocky ] ||
+        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] ||
             [ "$distro" = oracle ] || [ "$distro" = redhat ] ||
             [ "$distro" = anolis ] || [ "$distro" = opencloudos ] || [ "$distro" = openeuler ] ||
             [ "$distro" = ubuntu ]; then
-            # 这里的 fs 没有用，最终使用目标系统的格式化工具
-            fs=ext4
+            fs="$(get_os_fs)"
             if is_efi; then
                 parted /dev/$xda -s -- \
                     mklabel gpt \
@@ -2387,8 +1999,7 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*1        #1 os
             mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
         fi
-    elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] ||
-        [ "$distro" = nixos ] || [ "$distro" = aosc ]; then
+    elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] || [ "$distro" = nixos ]; then
         # alpine 本身关闭了 64bit ext4
         # https://gitlab.alpinelinux.org/alpine/alpine-conf/-/blob/3.18.1/setup-disk.in?ref_type=tags#L908
         # 而且 alpine 的 extlinux 不兼容 64bit ext4
@@ -2435,7 +2046,9 @@ create_part() {
                 # 默认值，假设 iso 3g
                 size_bytes=$((3 * 1024 * 1024 * 1024))
             fi
-            installer_part_size="$(get_part_size_mb_for_file_size_b $size_bytes)MiB"
+            # 假设需要预留 10% 空间
+            size_bytes_mb=$((size_bytes * 110 / 100 / 1024 / 1024))
+            installer_part_size=${size_bytes_mb}MiB
         else
             # redhat
             installer_part_size=2GiB
@@ -2496,23 +2109,8 @@ create_part() {
     fi
 }
 
-umount_pseudo_fs() {
-    os_dir=$(realpath "$1")
-
-    dirs="/proc /sys /dev /run"
-    regex=$(echo "$dirs" | sed 's, ,|,g')
-    if mounts=$(mount | grep -Ew "on $os_dir($regex)" | awk '{print $3}' | tac); then
-        for mount in $mounts; do
-            echo "umount $mount"
-            umount $mount
-        done
-    fi
-}
-
 mount_pseudo_fs() {
     os_dir=$1
-
-    mkdir -p $os_dir/proc/ $os_dir/sys/ $os_dir/dev/ $os_dir/run/
 
     # https://wiki.archlinux.org/title/Chroot#Using_chroot
     mount -t proc /proc $os_dir/proc/
@@ -2534,10 +2132,8 @@ get_yq_name() {
 
 create_cloud_init_network_config() {
     ci_file=$1
-    recognize_static6=${2:-true}
-    recognize_ipv6_types=${3:-true}
 
-    info "Create Cloud-init network config"
+    info "Create Cloud Init network config"
 
     # 防止文件未创建
     mkdir -p "$(dirname "$ci_file")"
@@ -2556,7 +2152,7 @@ create_cloud_init_network_config() {
         yq -i ".network.version=1 |
            .network.config[$config_id].type=\"physical\" |
            .network.config[$config_id].name=\"$ethx\" |
-           .network.config[$config_id].mac_address=(\"$mac_addr\" | . style=\"single\")
+           .network.config[$config_id].mac_address=\"$mac_addr\"
            " $ci_file
 
         subnet_id=0
@@ -2578,7 +2174,6 @@ create_cloud_init_network_config() {
             # 旧版 cloud-init 有 bug
             # 有的版本会只从第一种配置中读取 dns，有的从第二种读取
             # 因此写两种配置
-            # https://github.com/canonical/cloud-init/commit/1b8030e0c7fd6fbff7e38ad1e3e6266ae50c83a5
             for cur in $(get_current_dns 4); do
                 yq -i ".network.config[$config_id].subnets[$subnet_id].dns_nameservers += [\"$cur\"]" $ci_file
             done
@@ -2592,40 +2187,39 @@ create_cloud_init_network_config() {
 
         # ipv6
         if is_slaac; then
-            if $recognize_ipv6_types; then
-                if is_enable_other_flag; then
-                    type=ipv6_dhcpv6-stateless
-                else
-                    type=ipv6_slaac
-                fi
+            if is_enable_other_flag; then
+                type=ipv6_dhcpv6-stateless
             else
-                type=dhcp6
+                type=ipv6_slaac
             fi
             yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"$type\"}" $ci_file
 
         elif is_dhcpv6; then
-            if $recognize_ipv6_types; then
-                type=ipv6_dhcpv6-stateful
-            else
-                type=dhcp6
-            fi
-            yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"$type\"}" $ci_file
+            yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"ipv6_dhcpv6-stateful\"}" $ci_file
 
         elif is_staticv6; then
             get_netconf_to ipv6_addr
             get_netconf_to ipv6_gateway
-            if $recognize_static6; then
-                type_ipv6_static=static6
-            else
+            # el7 不认识 static6，但可改成 static，作用相同
+            # >=20.1 修复
+            # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
+            # anolis 7:        cloud-init 19.1
+            # openeuler 20.03: cloud-init 19.4
+            # shellcheck disable=SC2154
+            if { [ "$distro" = centos ] && [ "$releasever" = 7 ]; } ||
+                { [ "$distro" = oracle ] && [ "$releasever" = 7 ]; } ||
+                { [ "$distro" = anolis ] && [ "$releasever" = 7 ]; } ||
+                { [ "$distro" = openeuler ] && [ "$releasever" = 20.03 ]; }; then
                 type_ipv6_static=static
+            else
+                type_ipv6_static=static6
             fi
             yq -i ".network.config[$config_id].subnets[$subnet_id] = {
                     \"type\": \"$type_ipv6_static\",
                     \"address\": \"$ipv6_addr\",
                     \"gateway\": \"$ipv6_gateway\" }
                     " $ci_file
-            # 无法设置 autoconf = false ?
-            if should_disable_accept_ra; then
+            if should_disable_ra_slaac; then
                 yq -i ".network.config[$config_id].accept-ra = false" $ci_file
             fi
         fi
@@ -2658,10 +2252,6 @@ create_cloud_init_network_config() {
     fi
 
     apk del "$(get_yq_name)"
-
-    # 查看文件
-    info "Cloud-init network config"
-    cat -n $ci_file >&2
 }
 
 # 实测没用，生成的 machine-id 是固定的
@@ -2670,19 +2260,16 @@ clear_machine_id() {
     os_dir=$1
 
     # https://www.freedesktop.org/software/systemd/man/latest/machine-id.html
-    # gentoo 不会自动创建该文件
-    echo uninitialized >$os_dir/etc/machine-id
+    if [ -f $os_dir/etc/machine-id ]; then
+        echo uninitialized >$os_dir/etc/machine-id
+    fi
 
     # https://build.opensuse.org/projects/Virtualization:Appliances:Images:openSUSE-Leap-15.5/packages/kiwi-templates-Minimal/files/config.sh?expand=1
     rm -f $os_dir/var/lib/systemd/random-seed
 }
 
-# 注意 anolis 7 有这个文件，可能干扰我们的配置?
-# /etc/cloud/cloud.cfg.d/aliyun_cloud.cfg -> /sys/firmware/qemu_fw_cfg/by_name/etc/cloud-init/vendor-data/raw
 download_cloud_init_config() {
     os_dir=$1
-    recognize_static6=$2
-    recognize_ipv6_types=$3
 
     ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg
     download $confhome/cloud-init.yaml $ci_file
@@ -2704,14 +2291,28 @@ download_cloud_init_config() {
     # swapfile
     # 如果分区表中已经有swapfile就跳过，例如arch
     if ! grep -w swap $os_dir/etc/fstab; then
-        cat <<EOF >>$ci_file
+        # btrfs
+        # 目前只有 arch 和 fedora 镜像使用 btrfs
+        # 等 fedora 39 cloud-init 升级到 v23.3 后删除
+        if mount | grep 'on /os type btrfs'; then
+            insert_into_file $ci_file after '^runcmd:' <<EOF
+  - btrfs filesystem mkswapfile --size 1G /swapfile
+  - swapon /swapfile
+  - echo "/swapfile none swap defaults 0 0" >> /etc/fstab
+  - systemctl daemon-reload
+EOF
+        else
+            # ext4 xfs
+            cat <<EOF >>$ci_file
 swap:
   filename: /swapfile
   size: auto
 EOF
+        fi
     fi
 
-    create_cloud_init_network_config "$ci_file" "$recognize_static6" "$recognize_ipv6_types"
+    create_cloud_init_network_config $ci_file
+    cat -n $ci_file
 }
 
 modify_windows() {
@@ -2864,44 +2465,20 @@ restore_resolv_conf() {
     fi
 }
 
-keep_now_resolv_conf() {
-    os_dir=$1
-    rm -f $os_dir/etc/resolv.conf.orig
-}
-
-# 抄 https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
-get_alpine_firmware_pkgs() {
-    # 需要有 modloop，不然 modinfo 会报错
-    ensure_service_started modloop >&2
-
-    # 如果不在单独的文件夹，则用 linux-firmware-other
-    # 如果在单独的文件夹，则用 linux-firmware-xxx
-    # 如果不需要 firmware，则用 linux-firmware-none
-    firmware_pkgs=$(
-        cd /sys/module && modinfo -F firmware -- * 2>/dev/null |
-            awk -F/ '{print $1 == $0 ? "linux-firmware-other" : "linux-firmware-"$1}' |
-            sort -u
-    )
-
-    # 使用 command 因为自己覆盖了 apk 添加了 >&2
-    retry 5 command apk search --quiet --exact ${firmware_pkgs:-linux-firmware-none}
+is_need_ucode_firmware() {
+    ! is_virt && [ -n "$(get_ucode_firmware_pkgs)" ]
 }
 
 get_ucode_firmware_pkgs() {
-    is_virt && return
-
     case "$distro" in
-    centos | almalinux | rocky | oracle | redhat | anolis | opencloudos | openeuler) os=elol ;;
+    centos | alma | rocky | oracle | redhat | anolis | opencloudos | openeuler) os=elol ;;
     *) os=$distro ;;
     esac
 
     case "$os-$(get_cpu_vendor)" in
-    # alpine 的 linux-firmware 以文件夹进行拆分
-    # setup-alpine 会自动安装需要的 firmware（modloop 没挂载则无效）
-    # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
-    alpine-intel) echo intel-ucode ;;
-    alpine-amd) echo amd-ucode ;;
-    alpine-*) ;;
+    alpine-intel) echo linux-firmware linux-firmware-intel intel-ucode ;;
+    alpine-amd) echo linux-firmware linux-firmware-amd linux-firmware-amd-ucode amd-ucode ;;
+    alpine-*) echo linux-firmware ;;
 
     debian-intel) echo firmware-linux intel-microcode ;;
     debian-amd) echo firmware-linux amd64-microcode ;;
@@ -2938,92 +2515,6 @@ get_ucode_firmware_pkgs() {
     esac
 }
 
-chroot_systemctl_disable() {
-    os_dir=$1
-    shift
-
-    for unit in "$@"; do
-        # 如果传进来的是x(没有.) 则改成 x.service
-        if ! [[ "$unit" = "*.*" ]]; then
-            unit=$i.service
-        fi
-
-        # debian 10 返回值始终是 0
-        if ! chroot $os_dir systemctl list-unit-files "$unit" 2>&1 | grep -Eq '^0 unit'; then
-            chroot $os_dir systemctl disable "$unit"
-        fi
-    done
-}
-
-disable_cloud_init() {
-    os_dir=$1
-    info "Disable Cloud-Init"
-
-    # 两种方法都可以
-
-    if [ -d $os_dir/etc/cloud ]; then
-        touch $os_dir/etc/cloud/cloud-init.disabled
-    fi
-
-    for name in cloud-init-local cloud-init cloud-config cloud-final; do
-        for type in service socket; do
-            # 服务不存在时会报错
-            chroot $os_dir systemctl disable "$name.$type" 2>/dev/null || true
-        done
-    done
-}
-
-disable_jeos_firstboot() {
-    os_dir=$1
-    info "Disable JeOS Firstboot"
-
-    # 两种方法都可以
-    # https://github.com/openSUSE/jeos-firstboot?tab=readme-ov-file#usage
-
-    rm -rf $os_dir/var/lib/YaST2/reconfig_system
-
-    for name in jeos-firstboot jeos-firstboot-snapshot; do
-        # 服务不存在时会报错
-        chroot $os_dir systemctl disable "$name.service" 2>/dev/null || true
-    done
-}
-
-create_network_manager_config() {
-    source_cfg=$1
-    os_dir=$2
-    info "Create Network-Manager config"
-
-    # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
-    apk add cloud-init
-    cloud-init devel net-convert -p "$source_cfg" -k yaml -d /out -D alpine -O network-manager
-
-    # 文档明确写了 ipv6.method=dhcp 无法获取网关
-    # https://networkmanager.dev/docs/api/latest/nm-settings-nmcli.html#:~:text=false/no/off-,ipv6,-.method
-    sed -i -e '/^may-fail=/d' -e 's/^method=dhcp/method=auto/' \
-        /out/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection
-
-    # 删除 # Generated by cloud-init. Changes will be lost.
-    # 删除 org.freedesktop.NetworkManager.origin=cloud-init
-    # 并删除头部的空行
-    sed -i \
-        -e '/^# Generated by cloud-init/d' \
-        -e '/^org\.freedesktop\.NetworkManager\.origin=cloud-init/d' \
-        /out/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection
-    del_head_empty_lines_inplace /out/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection
-
-    cp /out/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection \
-        $os_dir/etc/NetworkManager/system-connections/
-
-    # 清理
-    rm -rf /out
-    apk del cloud-init
-
-    # 最终显示文件
-    for file in "$os_dir"/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection; do
-        cat -n "$file" >&2
-    done
-}
-
 modify_linux() {
     os_dir=$1
     info "Modify Linux"
@@ -3038,22 +2529,20 @@ modify_linux() {
 
     # 修复 onlink 网关
     add_onlink_script_if_need() {
-        for ethx in $(get_eths); do
-            if is_staticv4 || is_staticv6; then
-                fix_sh=cloud-init-fix-onlink.sh
-                download "$confhome/$fix_sh" "$os_dir/$fix_sh"
-                insert_into_file "$ci_file" after '^runcmd:' <<EOF
-  - bash "/$fix_sh" && rm -f "/$fix_sh"
+        if is_staticv4 || is_staticv6; then
+            fix_sh=cloud-init-fix-onlink.sh
+            download $confhome/$fix_sh $os_dir/$fix_sh
+            insert_into_file $ci_file after '^runcmd:' <<EOF
+  - bash /$fix_sh && rm -f /$fix_sh
 EOF
-                break
-            fi
-        done
+        fi
     }
 
-    # 部分镜像有默认配置，例如 centos
-    del_exist_sysconfig_NetworkManager_config $os_dir
+    download_cloud_init_config $os_dir
 
-    # 仅 fedora (el/ol/国产fork 用的是复制文件方法)
+    # clear_machine_id $os_dir
+
+    # el/ol/fedora/国产fork
     # 1. 禁用 selinux kdump
     # 2. 添加微码+固件
     if [ -f $os_dir/etc/redhat-release ]; then
@@ -3062,18 +2551,11 @@ EOF
         mount_pseudo_fs $os_dir
         cp_resolv_conf $os_dir
 
-        disable_cloud_init $os_dir
-
-        # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
-        create_cloud_init_network_config /net.cfg
-        create_network_manager_config /net.cfg "$os_dir"
-        rm /net.cfg
-
         disable_selinux_kdump $os_dir
-
-        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
+        if is_need_ucode_firmware; then
             is_have_cmd_on_disk $os_dir dnf && mgr=dnf || mgr=yum
-            chroot $os_dir $mgr install -y $fw_pkgs
+            # shellcheck disable=SC2046
+            chroot $os_dir $mgr install -y $(get_ucode_firmware_pkgs)
         fi
 
         restore_resolv_conf $os_dir
@@ -3086,14 +2568,12 @@ EOF
     # 注意 ubuntu 也有 /etc/debian_version
     if [ "$distro" = debian ]; then
         # 修复 onlink 网关
-        # add_onlink_script_if_need
+        add_onlink_script_if_need
 
         mount_pseudo_fs $os_dir
         cp_resolv_conf $os_dir
         find_and_mount /boot
         find_and_mount /boot/efi
-
-        disable_cloud_init $os_dir
 
         # 获取当前开启的 Components, 后面要用
         if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
@@ -3102,60 +2582,49 @@ EOF
             comps=$(grep '^deb ' $os_dir/etc/apt/sources.list | head -1 | cut -d' ' -f4-)
         fi
 
-        # ELTS/CN 源处理
+        # EOL 处理
         if is_elts; then
-            # ELTS
             wget https://deb.freexian.com/extended-lts/archive-key.gpg \
                 -O $os_dir/etc/apt/trusted.gpg.d/freexian-archive-extended-lts.gpg
 
+            is_in_china &&
+                mirror=http://mirror.nju.edu.cn/debian-elts ||
+                mirror=http://deb.freexian.com/extended-lts
+
             codename=$(grep '^VERSION_CODENAME=' $os_dir/etc/os-release | cut -d= -f2)
-            # shellcheck disable=SC2154
+
             if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
                 cat <<EOF >$os_dir/etc/apt/sources.list.d/debian.sources
 Types: deb
-URIs: http://$deb_mirror
+URIs: $mirror
 Suites: $codename
 Components: $comps
 Signed-By: /etc/apt/trusted.gpg.d/freexian-archive-extended-lts.gpg
 EOF
             else
-                echo "deb http://$deb_mirror $codename $comps" >$os_dir/etc/apt/sources.list
-            fi
-        else
-            # non-ELTS
-            if is_in_china; then
-                # 不处理 security 源 security.debian.org/debian-security 和 /etc/apt/mirrors/debian-security.list
-                for file in $os_dir/etc/apt/mirrors/debian.list $os_dir/etc/apt/sources.list; do
-                    if [ -f "$file" ]; then
-                        sed -i "s|deb\.debian\.org/debian|$deb_mirror|" "$file"
-                    fi
-                done
+                echo "deb $mirror $codename $comps" >$os_dir/etc/apt/sources.list
             fi
         fi
 
-        # 标记所有内核为自动安装
-        pkgs=$(chroot $os_dir apt-mark showmanual linux-image* linux-headers*)
-        chroot $os_dir apt-mark auto $pkgs
-
-        # 安装合适的内核
-        kernel_package=$kernel
-        # shellcheck disable=SC2046
         # 检测机器是否能用 cloud 内核
-        if [[ "$kernel_package" = 'linux-image-cloud-*' ]] &&
+        # shellcheck disable=SC2046
+        if ls $os_dir/boot/vmlinuz-*-cloud-$(get_axx64) 2>/dev/null &&
             ! sh /can_use_cloud_kernel.sh "$xda" $(get_eths); then
-            kernel_package=$(echo "$kernel_package" | sed 's/-cloud//')
-        fi
-        # 如果镜像自带内核跟最佳内核是同一种且有更新
-        # 则 apt install 只会进行更新，不会将包设置成 manual
-        # 需要再运行 apt install 才会将包设置成 manual
-        chroot_apt_install $os_dir "$kernel_package"
-        chroot_apt_install $os_dir "$kernel_package"
 
-        # 使用 autoremove 删除非最佳内核
-        chroot_apt_autoremove $os_dir
+            chroot_apt_install $os_dir "linux-image-$(get_axx64)"
+
+            # 标记云内核包
+            # apt-mark showmanual 结果为空，返回值也是 0
+            if pkgs=$(chroot $os_dir apt-mark showmanual "linux-*-cloud-$(get_axx64)" | grep .); then
+                chroot $os_dir apt-mark auto $pkgs
+
+                # 使用 autoremove
+                chroot_apt_autoremove $os_dir
+            fi
+        fi
 
         # 微码+固件
-        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
+        if is_need_ucode_firmware; then
             #  debian 10 11 的 iucode-tool 在 contrib 里面
             #  debian 12 的 iucode-tool 在 main 里面
             [ "$releasever" -ge 12 ] &&
@@ -3176,76 +2645,36 @@ EOF
                 fi
             done
 
-            chroot_apt_install $os_dir $fw_pkgs
+            # shellcheck disable=SC2046
+            chroot_apt_install $os_dir $(get_ucode_firmware_pkgs)
         fi
 
-        # genericcloud 删除以下文件开机时才会显示 grub 菜单
-        # https://salsa.debian.org/cloud-team/debian-cloud-images/-/tree/master/config_space/bookworm/files/etc/default/grub.d
-        rm -f $os_dir/etc/default/grub.d/10_cloud.cfg
-        rm -f $os_dir/etc/default/grub.d/15_timeout.cfg
-        chroot $os_dir update-grub
+        if [ "$releasever" -le 11 ]; then
+            chroot $os_dir apt-get update
 
-        if true; then
-            # 如果使用 nocloud 镜像
-            chroot_apt_install $os_dir openssh-server
-        else
-            # 如果使用 genericcloud 镜像
-
-            # 还原默认配置并创建 key
-            # cat $os_dir/usr/share/openssh/sshd_config $os_dir/etc/ssh/sshd_config
-            # chroot $os_dir ssh-keygen -A
-            rm -rf $os_dir/etc/ssh/sshd_config
-            UCF_FORCE_CONFFMISS=1 chroot $os_dir dpkg-reconfigure openssh-server
-        fi
-
-        # 镜像自带的网络管理器
-        # debian 11 ifupdown
-        # debian 12 netplan + networkd + resolved
-        # ifupdown dhcp 不支持 24位掩码+不规则网关?
-
-        # 强制使用 netplan
-        if false && is_have_cmd_on_disk $os_dir netplan; then
-            chroot_apt_install $os_dir netplan.io
-            # 服务不存在时会报错
-            chroot $os_dir systemctl disable networking resolvconf 2>/dev/null || true
-            chroot $os_dir systemctl enable systemd-networkd systemd-resolved
-            rm_resolv_conf $os_dir
-            ln -sf ../run/systemd/resolve/stub-resolv.conf $os_dir/etc/resolv.conf
-            if [ -f "$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg" ]; then
+            if true; then
+                # 将 debian 11 设置为 12 一样的网络管理器
+                # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
+                chroot_apt_install $os_dir netplan.io
+                chroot $os_dir systemctl disable networking resolvconf
+                chroot $os_dir systemctl enable systemd-networkd systemd-resolved
+                rm_resolv_conf $os_dir
+                ln -sf ../run/systemd/resolve/stub-resolv.conf $os_dir/etc/resolv.conf
                 insert_into_file $os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg after '#cloud-config' <<EOF
 system_info:
   network:
     renderers: [netplan]
     activators: [netplan]
 EOF
+
+            else
+                # debian 11 默认不支持 rdnss，要安装 rdnssd 或者 nm
+                chroot_apt_install $os_dir rdnssd
             fi
         fi
 
-        create_ifupdown_config $os_dir/etc/network/interfaces
-
-        # ifupdown 不支持 rdnss
-        # 但 iso 安装不会安装 rdnssd，而是在安装时读取 rdnss 并写入 resolv.conf
-        if false; then
-            chroot_apt_install $os_dir rdnssd
-        fi
-
-        # debian 10 11 云镜像安装了 resolvconf
-        # debian 12 云镜像安装了 netplan systemd-resolved
-        # 云镜像用了 cloud-init 自动配置网络，用户是无感的，因此官方云镜像可以随便选择网络管理器
-        # 但我们的系统安装后用户可能有手动配置网络的需求，因此用回 iso 安装时的网络管理器 ifupdown
-
-        # 服务不存在时会报错
-        chroot $os_dir systemctl disable resolvconf systemd-networkd systemd-resolved 2>/dev/null || true
-
-        chroot_apt_install $os_dir ifupdown
-        chroot_apt_remove $os_dir resolvconf netplan.io systemd-resolved
-        chroot_apt_autoremove $os_dir
-        chroot $os_dir systemctl enable networking
-
-        # 静态时 networking 服务不会根据 /etc/network/interfaces 更新 resolv.conf
-        # 动态时使用了 isc-dhcp-client 支持自动更新 resolv.conf
-        # 另外 debian iso 不会安装 rdnssd
-        keep_now_resolv_conf $os_dir
+        # 不会自动建立链接，因此不能删除
+        restore_resolv_conf $os_dir
     fi
 
     # opensuse
@@ -3259,69 +2688,25 @@ EOF
         find_and_mount /boot
         find_and_mount /boot/efi
 
-        disable_cloud_init $os_dir
-        disable_jeos_firstboot $os_dir
-
         # opensuse leap
         if grep opensuse-leap $os_dir/etc/os-release; then
-
-            # sysconfig ifcfg
-            create_cloud_init_network_config $os_dir/net.cfg
-            chroot $os_dir cloud-init devel net-convert \
-                -p /net.cfg -k yaml -d out -D opensuse -O sysconfig
-
-            for ethx in $(get_eths); do
-                # 1. 修复甲骨文云重启后 ipv6 丢失
-                # https://github.com/openSUSE/wicked/issues/1058
-                # 还要注意 wicked dhcpv6 获取到的 ipv6 是 /64，其他 DHCPv6 程序获取到的是 /128
-                echo DHCLIENT6_USE_LAST_LEASE=no >>$os_dir/out/etc/sysconfig/network/ifcfg-$ethx
-
-                # 2. 修复 onlink 网关
-                for prefix in '' 'default '; do
-                    if is_staticv4; then
-                        get_netconf_to ipv4_gateway
-                        echo "${prefix}${ipv4_gateway} - -" >>$os_dir/out/etc/sysconfig/network/ifroute-$ethx
-                    fi
-                    if is_staticv6; then
-                        get_netconf_to ipv6_gateway
-                        echo "${prefix}${ipv6_gateway} - -" >>$os_dir/out/etc/sysconfig/network/ifroute-$ethx
-                    fi
-                done
-            done
-
-            # 复制配置
-            for file in \
-                "$os_dir/out/etc/sysconfig/network/ifcfg-eth"* \
-                "$os_dir/out/etc/sysconfig/network/ifroute-eth"*; do
-                # 动态 ip 没有 ifroute-eth*
-                if [ -f $file ]; then
-                    cp $file $os_dir/etc/sysconfig/network/
-                fi
-            done
-
-            # 清理
-            rm -rf $os_dir/net.cfg $os_dir/out
+            # 修复 onlink 网关
+            add_onlink_script_if_need
         fi
 
         # opensuse tumbleweed
-        # network-manager
+        # 更新到 cloud-init 24.1 后删除
         if grep opensuse-tumbleweed $os_dir/etc/os-release; then
-            # 如果使用 cloud-init 则需要 touch NetworkManager.conf
-            # 更新到 cloud-init 24.1 后删除
-            # touch $os_dir/etc/NetworkManager/NetworkManager.conf
-
-            # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
-            create_cloud_init_network_config /net.cfg
-            create_network_manager_config /net.cfg "$os_dir"
-            rm /net.cfg
+            touch $os_dir/etc/NetworkManager/NetworkManager.conf
         fi
 
         # 不能同时装 kernel-default-base 和 kernel-default
         chroot $os_dir zypper remove -y kernel-default-base
 
         # 固件+微码
-        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
-            chroot $os_dir zypper install -y $fw_pkgs
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot $os_dir zypper install -y $(get_ucode_firmware_pkgs)
         fi
 
         # 选择新内核
@@ -3332,27 +2717,21 @@ EOF
             kernel='kernel-default'
         fi
 
-        # x86 必须设置一个密码，否则报错，arm 没有这个问题
+        # 必须设置一个密码，否则报错
         # Failed to get root password hash
         # Failed to import /etc/uefi/certs/76B6A6A0.crt
         # warning: %post(kernel-default-5.14.21-150500.55.83.1.x86_64) scriptlet failed, exit status 255
-        if grep -q '^root:[:!*]' $os_dir/etc/shadow; then
-            echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
-            chroot $os_dir zypper install -y $kernel
-            chroot $os_dir passwd -d root
-        else
-            chroot $os_dir zypper install -y $kernel
-        fi
+        echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
+        chroot $os_dir zypper install -y $kernel
+        chroot $os_dir passwd -d root
 
         restore_resolv_conf $os_dir
-
-        # 删除 swap
-        swapoff -a
+        swapoff $os_dir/swapfile
         rm -f $os_dir/swapfile
     fi
 
-    # arch 云镜像
-    if false && [ -f $os_dir/etc/arch-release ]; then
+    # arch
+    if [ -f $os_dir/etc/arch-release ]; then
         # 修复 onlink 网关
         add_onlink_script_if_need
 
@@ -3364,8 +2743,8 @@ EOF
         rm_resolv_conf $os_dir
     fi
 
-    # gentoo 云镜像
-    if false && [ -f $os_dir/etc/gentoo-release ]; then
+    # gentoo
+    if [ -f $os_dir/etc/gentoo-release ]; then
         # 挂载伪文件系统
         mount_pseudo_fs $os_dir
         cp_resolv_conf $os_dir
@@ -3406,16 +2785,6 @@ EOF
         # 修复 onlink 网关
         add_onlink_script_if_need
     fi
-
-    basic_init $os_dir
-
-    # 应该在这里是否运行了 basic_init 和创建了网络配置文件
-    # 如果没有，则使用 cloud-init
-
-    # 查看 cloud-init 最终配置
-    if [ -f "$ci_file" ]; then
-        cat -n "$ci_file"
-    fi
 }
 
 modify_os_on_disk() {
@@ -3452,11 +2821,8 @@ modify_os_on_disk() {
                 if ls -d /os/*/ | grep -i '/windows/' 2>/dev/null; then
                     # 重新挂载为读写、忽略大小写
                     umount /os
-                    mount -t ntfs3 -o nocase /dev/$part /os
-                    # 有休眠文件时无法挂载成读写，提醒用户并退出脚本
-                    if mount | grep ' /os ' | grep -wq ro; then
-                        error_and_exit "Can't mount windows partition /dev/$part as rw."
-                    fi
+                    apk add ntfs-3g
+                    mount.lowntfs-3g /dev/$part /os -o ignore_case
                     modify_windows /os
                     return
                 fi
@@ -3478,29 +2844,69 @@ get_need_swap_size() {
     fi
 }
 
+# create_swap_if_ram_less_than() {
+#    need_ram=$1
+#    swapfile=$2
+#
+#    swapsize=$(get_need_swap_size $need_ram)
+#    if [ $swapsize -gt 0 ]; then
+#        create_swap $swapsize $swapfile
+#    fi
+# }
+
+# create_swap() {
+#    swapsize=$1
+#    swapfile=$2
+#
+#    if ! grep $swapfile /proc/swaps; then
+#        fallocate -l ${swapsize}M $swapfile
+#        chmod 0600 $swapfile
+#        mkswap $swapfile
+#        swapon $swapfile
+#    fi
+# }
+
+# Function to create a swap file if RAM is less than required
 create_swap_if_ram_less_than() {
     need_ram=$1
     swapfile=$2
 
-    swapsize=$(get_need_swap_size $need_ram)
-    if [ $swapsize -gt 0 ]; then
-        create_swap $swapsize $swapfile
+    swapsize=$(get_need_swap_size "$need_ram")
+    if [ "$swapsize" -gt 0 ]; then
+        create_swap "$swapsize" "$swapfile"
+    else
+        echo "No swap needed. Physical RAM is sufficient."
     fi
 }
 
+# Function to create and activate a swap file
 create_swap() {
     swapsize=$1
     swapfile=$2
 
-    if ! grep $swapfile /proc/swaps; then
-        fallocate -l ${swapsize}M $swapfile
-        chmod 0600 $swapfile
-        mkswap $swapfile
-        swapon $swapfile
+    if grep -q "$swapfile" /proc/swaps; then
+        echo "Swap file $swapfile is already active."
+        return
     fi
+
+    if [ -z "$swapsize" ] || [ "$swapsize" -le 0 ]; then
+        echo "Error: Invalid swap size (${swapsize} MB). Setting default to 512 MB."
+        swapsize=512
+    fi
+
+    echo "Creating swap file of size ${swapsize} MB at ${swapfile}..."
+    if ! fallocate -l "${swapsize}M" "$swapfile"; then
+        echo "Error: Unable to allocate space for swap file."
+        return 1
+    fi
+
+    chmod 0600 "$swapfile"
+    mkswap "$swapfile"
+    swapon "$swapfile"
+    echo "Swap file created and activated."
 }
 
-# 除了 alpine 都会用到
+# arch gentoo 常规安装用
 change_ssh_conf() {
     os_dir=$1
     key=$2
@@ -3508,28 +2914,21 @@ change_ssh_conf() {
     sub_conf=$4
 
     # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
-    # opensuse tumbleweed 没有 /etc/ssh/sshd_config
-    #                       有 /etc/ssh/sshd_config.d/ 文件夹
-    #                       有 /usr/etc/ssh/sshd_config
-    if { grep -q 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config ||
-        grep -q '^Include.*/etc/ssh/sshd_config.d/' $os_dir/usr/etc/ssh/sshd_config; } 2>/dev/null; then
+    # opensuse tumbleweed 有 /etc/ssh/sshd_config.d/ 文件夹，但没有 /etc/ssh/sshd_config，有/usr/etc/ssh/sshd_config
+    if grep -q 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config ||
+        grep -q '^Include.*/etc/ssh/sshd_config.d/' $os_dir/usr/etc/ssh/sshd_config; then
         mkdir -p $os_dir/etc/ssh/sshd_config.d/
         echo "$key $value" >"$os_dir/etc/ssh/sshd_config.d/$sub_conf"
     else
         # 如果 sshd_config 存在此 key，则替换
         # 否则追加
         line="^#?$key .*"
-        if grep -Exq "$line" $os_dir/etc/ssh/sshd_config; then
-            sed -Eiq "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
+        if grep -x "$line" $os_dir/etc/ssh/sshd_config; then
+            sed -Ei "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
         else
             echo "$key $value" >>$os_dir/etc/ssh/sshd_config
         fi
     fi
-}
-
-allow_password_login() {
-    os_dir=$1
-    change_ssh_conf "$os_dir" PasswordAuthentication yes 02-PasswordAuthenticaton.conf
 }
 
 # arch gentoo 常规安装用
@@ -3598,14 +2997,16 @@ disable_selinux_kdump() {
     os_dir=$1
 
     # selinux
-    # https://access.redhat.com/solutions/3176
-    # centos7 也建议将 selinux 开关写在 cmdline
-    # grep selinux=0 /usr/lib/dracut/modules.d/98selinux/selinux-loadpolicy.sh
-    #     warn "To disable selinux, add selinux=0 to the kernel command line."
     if [ -f $os_dir/etc/selinux/config ]; then
         sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' $os_dir/etc/selinux/config
     fi
-    chroot $os_dir grubby --update-kernel ALL --args selinux=0
+
+    # https://access.redhat.com/solutions/3176
+    # shellcheck disable=SC2154
+    # openeuler 版本是 24.03
+    if [ "$distro" = openeuler ] || [ "$releasever" -ge 9 ]; then
+        chroot $os_dir grubby --update-kernel ALL --args selinux=0
+    fi
 
     # kdump
     # grubby 只处理 GRUB_CMDLINE_LINUX，不会处理 GRUB_CMDLINE_LINUX_DEFAULT
@@ -3622,7 +3023,7 @@ disable_selinux_kdump() {
     chroot $os_dir grubby --update-kernel ALL --args crashkernel=no
     # el7 上面那条 grubby 命令不能设置 /etc/default/grub
     sed -i 's/crashkernel=[^ "]*/crashkernel=no/' $os_dir/etc/default/grub
-    if chroot $os_dir systemctl -q is-enabled kdump; then
+    if chroot $os_dir systemctl is-enabled kdump; then
         chroot $os_dir systemctl disable kdump
     fi
 }
@@ -3670,41 +3071,16 @@ disconnect_qcow() {
     fi
 }
 
-get_part_size_mb_for_file_size_b() {
-    local file_b=$1
-    local file_mb=$((file_b / 1024 / 1024))
-
-    # ext4 默认参数下
-    #  分区大小   可用大小   利用率
-    #  100 MiB      86 MiB   86.0%
-    #  200 MiB     177 MiB   88.5%
-    #  500 MiB     454 MiB   90.8%
-    #  512 MiB     476 MiB   92.9%
-    # 1024 MiB     957 MiB   93.4%
-    # 2000 MiB    1914 MiB   95.7%
-    # 2048 MiB    1929 MiB   94.1% 这里反而下降了
-    # 5120 MiB    4938 MiB   96.4%
-
-    # 文件系统大约占用 5% 空间
-
-    # 假设 1929M 的文件，计算得到需要创建 2031M 的分区
-    # 但是实测 2048M 的分区才能存放 1929M 的文件
-    # 因此预留不足 150M 时补够 150M
-    local reserve_mb=$((file_mb * 100 / 95 - file_mb))
-    if [ $reserve_mb -lt 150 ]; then
-        reserve_mb=150
-    fi
-
-    part_mb=$((file_mb + reserve_mb))
-    echo "File size:      $file_mb MiB" >&2
-    echo "Part size need: $part_mb MiB" >&2
-    echo $part_mb
+get_os_fs() {
+    case "$distro" in
+    ubuntu) echo ext4 ;;
+    anolis | openeuler) echo ext4 ;;
+    centos | alma | rocky | oracle | redhat) echo xfs ;;
+    opencloudos) echo xfs ;;
+    esac
 }
 
 get_cloud_image_part_size() {
-    # 7
-    # https://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud-2211.qcow2c 400m
-
     # 8
     # https://repo.almalinux.org/almalinux/8/cloud/x86_64/images/AlmaLinux-8-GenericCloud-latest.x86_64.qcow2 600m
     # https://download.rockylinux.org/pub/rocky/8/images/x86_64/Rocky-8-GenericCloud-Base.latest.x86_64.qcow2 1.8g
@@ -3716,10 +3092,7 @@ get_cloud_image_part_size() {
     # https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2 600m
     # https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2 600m
     # https://yum.oracle.com/templates/OracleLinux/OL9/u3/x86_64/OL9U3_x86_64-kvm-b220.qcow2 600m
-    # https://rhel-9.4-x86_64-kvm.qcow2 900m
-
-    # 10
-    # https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2 900m
+    # rhel-9.4-x86_64-kvm.qcow2 900m
 
     # https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/cloud/nocloud_alpine-3.19.1-x86_64-uefi-cloudinit-r0.qcow2 200m
     # https://kali.download/cloud-images/current/kali-linux-2024.1-cloud-genericcloud-amd64.tar.xz 200m
@@ -3740,11 +3113,12 @@ get_cloud_image_part_size() {
             echo 2GiB
         fi
     elif size_bytes=$(get_http_file_size "$img"); then
-        # 缩小 btrfs 需要写 qcow2 ，实测写入后只多了 1M，因此不用特殊处理
-        echo "$(get_part_size_mb_for_file_size_b $size_bytes)MiB"
+        # 额外 +100M 文件系统保留大小 和 qcow2 写入空间
+        size_bytes_mb=$((size_bytes / 1024 / 1024 + 100))
+        # 最少 1g ，因为可能要用作临时 swap
+        echo "$((size_bytes_mb / 1024 + 1))GiB"
     else
         # 如果没获取到文件大小
-        echo "Could not get cloud image size in http response." >&2
         echo 2GiB
     fi
 }
@@ -3768,23 +3142,6 @@ chroot_apt_install() {
     fi
 
     DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y "$@"
-}
-
-chroot_apt_remove() {
-    os_dir=$1
-    shift
-
-    # 不能用 apt remove --purge -y xxx yyy
-    # 因为如果索引里没有其中一个，会报错，另一个也不会删除
-    # 因此需要分开删除
-    for package in "$@"; do
-        # apt list 会提示 WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
-        # 但又不能用 apt-get list
-        if chroot $os_dir apt list --installed "$package" | grep -q installed; then
-            # 删除 resolvconf 时会弹出建议重启，因此添加 noninteractive
-            DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get remove --purge -y "$package"
-        fi
-    done
 }
 
 chroot_apt_autoremove() {
@@ -3828,156 +3185,160 @@ del_default_user() {
     done < <(grep -v nologin$ "$os_dir/etc/passwd" | cut -d: -f1 | grep -v root)
 }
 
-is_el7_family() {
-    is_have_cmd_on_disk "$1" yum &&
-        ! is_have_cmd_on_disk "$1" dnf
-}
-
-del_exist_sysconfig_NetworkManager_config() {
-    os_dir=$1
-
-    # 删除云镜像自带的 dhcp 配置，防止歧义
-    rm -rf $os_dir/etc/NetworkManager/system-connections/*.nmconnection
-    rm -rf $os_dir/etc/sysconfig/network-scripts/ifcfg-*
-
-    # 1. 修复 cloud-init 添加了 IPV*_FAILURE_FATAL / may-fail=false
-    #    甲骨文 dhcpv6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
-    # 2. 修复 dhcpv6 下，ifcfg 添加了 IPV6_AUTOCONF=no 导致无法获取网关
-    # 3. 修复 dhcpv6 下，NM method=dhcp 导致无法获取网关
-    if false; then
-        ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg
-
-        insert_into_file $ci_file after '^runcmd:' <<EOF
-  - sed -i '/^IPV[46]_FAILURE_FATAL=/d' /etc/sysconfig/network-scripts/ifcfg-* || true
-  - sed -i '/^may-fail=/d' /etc/NetworkManager/system-connections/*.nmconnection || true
-  - for f in /etc/sysconfig/network-scripts/ifcfg-*; do grep -q '^DHCPV6C=yes' "\$f" && sed -i '/^IPV6_AUTOCONF=no/d' "\$f"; done
-  - sed -i 's/^method=dhcp/method=auto/' /etc/NetworkManager/system-connections/*.nmconnection || true
-  - systemctl is-enabled NetworkManager && systemctl restart NetworkManager || true
-EOF
-    fi
-}
-
-install_fnos() {
-    info "Install fnos"
-    os_dir=/os
-
-    # 官方安装调用流程
-    # /etc/init.d/run_install.sh > trim-install > trim-grub
-
-    # 挂载 /os
-    mkdir -p /os
-    mount /dev/$xda*2 /os
-
-    # 下载并挂载 iso
-    mkdir -p /os/installer /iso
-    download "$iso" /os/installer/fnos.iso
-    mount -o ro /os/installer/fnos.iso /iso
-
-    # 解压 initrd
-    apk add cpio
-    initrd_dir=/os/installer/initrd_dir
-    mkdir -p $initrd_dir
-    (
-        cd $initrd_dir
-        zcat /iso/install.amd/initrd.gz | cpio -idm
-    )
-    apk del cpio
-
-    # 获取挂载参数
-    fstab_line_os=$(strings $initrd_dir/trim-install | grep -m1 '^UUID=%s / ')
-    fstab_line_efi=$(strings $initrd_dir/trim-install | grep -m1 '^UUID=%s /boot/efi ')
-    fstab_line_swapfile=$(strings $initrd_dir/trim-install | grep -m1 '^/swapfile none swap ')
-
-    # 删除 initrd
-    rm -rf $initrd_dir
-
-    # 复制 trimfs.tgz 并删除 ISO 以获得更多空间
-    cp /iso/trimfs.tgz /os/installer
-    umount /iso
-    rm /os/installer/fnos.iso
-
-    # 挂载 /os/boot/efi
-    if is_efi; then
-        mkdir -p /os/boot/efi
-        mount -o "$(echo "$fstab_line_efi" | awk '{print $4}')" /dev/$xda*1 /os/boot/efi
-    fi
-
-    # 复制系统
-    info "Extract fnos"
-    apk add tar gzip pv
-    pv -f /os/installer/trimfs.tgz | tar zxp --numeric-owner --xattrs-include='*.*' -C /os
-    apk del tar gzip pv
-
-    # 删除 installer (trimfs.tgz)
-    rm -rf /os/installer
-
-    # 挂载 proc sys dev
-    mount_pseudo_fs /os
-
-    # 更新 initrd
-    # chroot $os_dir update-initramfs -u
-
-    # 更改密码
-    # chroot $os_dir passwd -d root
-    echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
-
-    # ssh root 登录，测试用
-    if false; then
-        allow_root_password_login $os_dir
-        chroot $os_dir systemctl enable ssh
-    fi
-
-    # grub
-    if is_efi; then
-        chroot $os_dir grub-install --efi-directory=/boot/efi
-        chroot $os_dir grub-install --efi-directory=/boot/efi --removable
-    else
-        chroot $os_dir grub-install /dev/$xda
-    fi
-
-    # grub tty
-    ttys_cmdline=$(get_ttys console=)
-    echo GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $ttys_cmdline\" \
-        >>$os_dir/etc/default/grub.d/tty.cfg
-    chroot $os_dir update-grub
-
-    # fstab
-    {
-        # /
-        uuid=$(lsblk /dev/$xda*2 -no UUID)
-        echo "$fstab_line_os" | sed "s/%s/$uuid/"
-
-        # 官方安装器即使 swapfile 设为 0 也会有这行
-        echo "$fstab_line_swapfile" | sed "s/%s/$uuid/"
-
-        # /boot/efi
-        if is_efi; then
-            uuid=$(lsblk /dev/$xda*1 -no UUID)
-            echo "$fstab_line_efi" | sed "s/%s/$uuid/"
-        fi
-    } >$os_dir/etc/fstab
-
-    # 网卡配置
-    create_cloud_init_network_config /net.cfg
-    create_network_manager_config /net.cfg $os_dir
-    rm /net.cfg
-
-    # 修正网卡名
-    add_fix_eth_name_systemd_service $os_dir
-}
-
 install_qcow_by_copy() {
     info "Install qcow2 by copy"
 
+    mount_nouuid() {
+        case "$(get_os_fs)" in
+        ext4) mount "$@" ;;
+        xfs) mount -o nouuid "$@" ;;
+        esac
+    }
+
+    efi_mount_opts=$(
+        case "$distro" in
+        ubuntu) echo "umask=0077" ;;
+        *) echo "defaults,uid=0,gid=0,umask=077,shortname=winnt" ;;
+        esac
+    )
+
+    connect_qcow
+
+    # 镜像分区格式
+    # centos/rocky/alma/rhel: xfs
+    # oracle x86_64:          lvm + xfs
+    # oracle aarch64 cloud:   xfs
+
+    is_lvm_image=false
+    if lsblk -f /dev/nbd0p* | grep LVM2_member; then
+        is_lvm_image=true
+        apk add lvm2
+        lvscan
+        vg=$(pvs | grep /dev/nbd0p | awk '{print $2}')
+        lvchange -ay "$vg"
+    fi
+
+    # TODO: 系统分区应该是最后一个分区
+    # 选择最大分区
+    os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | awk '{print $1}')
+    efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,PARTTYPE | grep -i "$EFI_UUID" | awk '{print $1}')
+    # 排除前两个，再选择最大分区
+    # alma 9 boot 分区的类型不是规定的 uuid
+    # openeuler boot 分区是 fat 格式
+    boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs|fat' | awk '{print $1}' |
+        grep -vx "$os_part" | grep -vx "$efi_part" | tail -1 | awk '{print $1}')
+
+    if $is_lvm_image; then
+        os_part="mapper/$os_part"
+    fi
+
+    info "qcow2 Partitions"
+    lsblk -f /dev/nbd0 -o +PARTTYPE
+    echo "Part OS:   $os_part"
+    echo "Part EFI:  $efi_part"
+    echo "Part Boot: $boot_part"
+
+    # 分区寻找方式
+    # 系统/分区          cmdline:root  fstab:efi
+    # rocky             LABEL=rocky   LABEL=EFI
+    # ubuntu            PARTUUID      LABEL=UEFI
+    # 其他el/ol         UUID           UUID
+
+    # read -r os_part_uuid os_part_label < <(lsblk /dev/$os_part -no UUID,LABEL)
+    os_part_uuid=$(lsblk /dev/$os_part -no UUID)
+    os_part_label=$(lsblk /dev/$os_part -no LABEL)
+
+    if [ -n "$efi_part" ]; then
+        efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
+        efi_part_label=$(lsblk /dev/$efi_part -no LABEL)
+    fi
+
+    mkdir -p /nbd /nbd-boot /nbd-efi
+
+    # 使用目标系统的格式化程序
+    # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
+    mount_nouuid /dev/$os_part /nbd/
+    mount_pseudo_fs /nbd/
+    case "$(get_os_fs)" in
+    ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
+    xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
+    esac
+    umount -R /nbd/
+
+    # TODO: ubuntu 镜像缺少 mkfs.fat/vfat/dosfstools? initrd 不需要检查fs完整性？
+
+    # 创建并挂载 /os
+    mkdir -p /os
+    mount -o noatime /dev/$xda*2 /os/
+
+    # 如果是 efi 则创建 /os/boot/efi
+    # 如果镜像有 efi 分区也创建 /os/boot/efi，用于复制 efi 分区的文件
+    if is_efi || [ -n "$efi_part" ]; then
+        mkdir -p /os/boot/efi/
+
+        # 挂载 /os/boot/efi
+        # 预先挂载 /os/boot/efi 因为可能 boot 和 efi 在同一个分区（openeuler 24.03 arm）
+        # 复制 boot 时可以会复制 efi 的文件
+        if is_efi; then
+            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+        fi
+    fi
+
+    # 复制系统分区
+    echo Copying os partition...
+    mount_nouuid -o ro /dev/$os_part /nbd/
+    cp -a /nbd/* /os/
+    umount /nbd/
+
+    # 复制boot分区，如果有
+    if [ -n "$boot_part" ]; then
+        echo Copying boot partition...
+        mount_nouuid -o ro /dev/$boot_part /nbd-boot/
+        cp -a /nbd-boot/* /os/boot/
+        umount /nbd-boot/
+    fi
+
+    # 复制efi分区，如果有
+    if [ -n "$efi_part" ]; then
+        echo Copying efi partition...
+        mount -o ro /dev/$efi_part /nbd-efi/
+        cp -a /nbd-efi/* /os/boot/efi/
+        umount /nbd-efi/
+    fi
+
+    # 断开 qcow
+    if is_have_cmd vgchange; then
+        vgchange -an
+    fi
+    disconnect_qcow
+
+    # 已复制并断开连接 qcow，可删除 qemu-img
+    apk del qemu-img
+
+    # 如果镜像有efi分区，复制其uuid
+    # 如果有相同uuid的fat分区，则无法挂载
+    # 所以要先复制efi分区，断开nbd再复制uuid
+    if is_efi && [ -n "$efi_part_uuid" ]; then
+        umount /os/boot/efi/
+        apk add mtools
+        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_part_label
+        update_part
+        mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+    fi
+
+    # 挂载伪文件系统
+    mount_pseudo_fs /os/
+
+    # 创建 swap
+    umount /installer/
+    mkswap /dev/$xda*3
+    swapon /dev/$xda*3
+
     modify_el_ol() {
         info "Modify el ol"
-        os_dir=/os
 
         # resolv.conf
         cp_resolv_conf /os
-
-        # 部分镜像有默认配置，例如 centos
-        del_exist_sysconfig_NetworkManager_config /os
 
         # 删除镜像的默认账户，防止使用默认账户密码登录 ssh
         del_default_user /os
@@ -3985,45 +3346,55 @@ install_qcow_by_copy() {
         # selinux kdump
         disable_selinux_kdump /os
 
-        # el7 删除 machine-id 后不会自动重建
-        clear_machine_id /os
+        # centos7 删除 machine-id 后不会自动重建
+        # clear_machine_id /os
 
-        # el7 forks 特殊处理
-        if is_el7_family /os; then
-            # centos 7 eol 换源
-            if [ -f /os/etc/yum.repos.d/CentOS-Base.repo ]; then
-                # 保持默认的 http 因为自带的 ssl 证书可能过期
-                if is_in_china; then
-                    mirror=mirror.nju.edu.cn/centos-vault
-                else
-                    mirror=vault.centos.org
-                fi
-                sed -Ei -e 's,(mirrorlist=),#\1,' \
-                    -e "s,#(baseurl=http://)mirror.centos.org,\1$mirror," /os/etc/yum.repos.d/CentOS-Base.repo
-            fi
-
-            # el7 yum 可能会使用 ipv6，即使没有 ipv6 网络
+        # el7 yum 可能会使用 ipv6，即使没有 ipv6 网络
+        if [ "$releasever" = 7 ]; then
             if [ "$(cat /dev/netconf/eth*/ipv6_has_internet | sort -u)" = 0 ]; then
                 echo 'ip_resolve=4' >>/os/etc/yum.conf
             fi
+        fi
 
-            # el7 安装 NetworkManager
-            # anolis 7 镜像自带 NetworkManager
-            if ! [ -f /os/usr/lib/systemd/system/NetworkManager.service ]; then
-                chroot_dnf install NetworkManager
+        # centos 7 eol 特殊处理
+        if [ "$releasever" = 7 ] && [ -f /os/etc/yum.repos.d/CentOS-Base.repo ]; then
+            # 保持默认的 http 因为自带的 ssl 证书可能过期
+            if is_in_china; then
+                mirror=mirror.nju.edu.cn/centos-vault
+            else
+                mirror=vault.centos.org
             fi
-            # 服务不存在时会报错
-            chroot /os systemctl disable network 2>/dev/null || true
-            chroot /os systemctl enable NetworkManager
+            sed -Ei -e 's,(mirrorlist=),#\1,' \
+                -e "s,#(baseurl=http://)mirror.centos.org,\1$mirror," /os/etc/yum.repos.d/CentOS-Base.repo
         fi
 
         # firmware + microcode
-        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
-            chroot_dnf install $fw_pkgs
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot_dnf install $(get_ucode_firmware_pkgs)
         fi
 
+        # centos 7 安装 NetworkManager
+        if [ "$releasever" = 7 ]; then
+            chroot_dnf install NetworkManager
+        fi
+        # anolis 7 镜像自带 nm
+
+        # 删除云镜像自带的 dhcp 配置，防止歧义
+        # clout-init 网络配置在 /etc/sysconfig/network-scripts/
+        rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
+        rm -rf /os/etc/sysconfig/network-scripts/ifcfg-*
+
+        # 修复 cloud-init 添加了 IPV*_FAILURE_FATAL
+        # 甲骨文 dhcp6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
+        insert_into_file $ci_file after '^runcmd:' <<EOF
+  - sed -i '/IPV4_FAILURE_FATAL/d' /etc/sysconfig/network-scripts/ifcfg-* || true
+  - sed -i '/IPV6_FAILURE_FATAL/d' /etc/sysconfig/network-scripts/ifcfg-* || true
+  - systemctl restart NetworkManager
+EOF
+
         # fstab 删除多余分区
-        # almalinux/rocky 镜像有 boot 分区
+        # alma/rocky 镜像有 boot 分区
         # oracle 镜像有 swap 分区
         sed -i '/[[:space:]]\/boot[[:space:]]/d' /os/etc/fstab
         sed -i '/[[:space:]]swap[[:space:]]/d' /os/etc/fstab
@@ -4090,7 +3461,7 @@ install_qcow_by_copy() {
         fi
 
         # blscfg 启动项
-        # rocky/almalinux镜像是独立的boot分区，但我们不是
+        # rocky/alma镜像是独立的boot分区，但我们不是
         # 因此要添加boot目录
         if ls /os/boot/loader/entries/*.conf 2>/dev/null &&
             ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
@@ -4128,85 +3499,6 @@ EOF
         # --update-bls-cmdline
         chroot /os/ grub2-mkconfig -o "$grub_o_cfg"
 
-        # 网络配置
-        # el7/8 sysconfig
-        # el9 network-manager
-        if [ -f $os_dir/etc/sysconfig/network-scripts/ifup-eth ]; then
-            # sysconfig
-            info 'sysconfig'
-
-            # anolis/openeuler/opencloudos 可能要安装 cloud-init
-            # opencloudos 无法使用 chroot $os_dir command -v xxx
-            # chroot: failed to run command ‘command’: No such file or directory
-            # 注意还要禁用 cloud-init 服务
-            if ! is_have_cmd_on_disk $os_dir cloud-init; then
-                chroot_dnf install cloud-init
-            fi
-
-            # cloud-init 路径
-            # /usr/lib/python2.7/site-packages/cloudinit/net/
-            # /usr/lib/python3/dist-packages/cloudinit/net/
-            # /usr/lib/python3.9/site-packages/cloudinit/net/
-
-            # el7 不认识 static6，但可改成 static，作用相同
-            recognize_static6=true
-            if ls $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py 2>/dev/null &&
-                ! grep -q static6 $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py; then
-                recognize_static6=false
-            fi
-
-            # cloud-init 20.1 才支持以下配置
-            # https://cloudinit.readthedocs.io/en/20.4/topics/network-config-format-v1.html#subnet-ip
-            # https://cloudinit.readthedocs.io/en/21.1/topics/network-config-format-v1.html#subnet-ip
-            # ipv6_dhcpv6-stateful: Configure this interface with dhcp6
-            # ipv6_dhcpv6-stateless: Configure this interface with SLAAC and DHCP
-            # ipv6_slaac: Configure address with SLAAC
-
-            # el7 最新 cloud-init 版本
-            # centos 7         19.4-7.0.5.el7_9.6  backport 了 ipv6_xxx
-            # openeuler 20.03  19.4-15.oe2003sp4   backport 了 ipv6_xxx
-            # anolis 7         19.1.17-1.0.1.an7   没有更新到 centos7 相同版本,也没 backport ipv6_xxx，坑
-
-            # 最好还修改 ifcfg-eth* 的 IPV6_AUTOCONF
-            # 但实测 anolis7 cloud-init dhcp6 不会生成 IPV6_AUTOCONF，因此暂时不管
-            # https://www.redhat.com/zh/blog/configuring-ipv6-rhel-7-8
-            recognize_ipv6_types=true
-            if ls -d $os_dir/usr/lib/python*/*-packages/cloudinit/net/ 2>/dev/null &&
-                ! grep -qr ipv6_slaac $os_dir/usr/lib/python*/*-packages/cloudinit/net/; then
-                recognize_ipv6_types=false
-            fi
-
-            # 生成 cloud-init 网络配置
-            create_cloud_init_network_config $os_dir/net.cfg "$recognize_static6" "$recognize_ipv6_types"
-
-            # 转换成目标系统的网络配置
-            chroot $os_dir cloud-init devel net-convert \
-                -p /net.cfg -k yaml -d out -D rhel -O sysconfig
-            cp $os_dir/out/etc/sysconfig/network-scripts/ifcfg-eth* $os_dir/etc/sysconfig/network-scripts/
-
-            # 清理
-            rm -rf $os_dir/net.cfg $os_dir/out
-
-            # 修正网络配置问题并显示文件
-            sed -i '/^IPV[46]_FAILURE_FATAL=/d' $os_dir/etc/sysconfig/network-scripts/ifcfg-*
-            for file in "$os_dir/etc/sysconfig/network-scripts/ifcfg-"*; do
-                if grep -q '^DHCPV6C=yes' "$file"; then
-                    sed -i '/^IPV6_AUTOCONF=no/d' "$file"
-                fi
-
-                cat -n "$file"
-            done
-        else
-            # Network Manager
-            info 'Network Manager'
-
-            create_cloud_init_network_config /net.cfg
-            create_network_manager_config /net.cfg "$os_dir"
-
-            # 清理
-            rm /net.cfg
-        fi
-
         # 不删除可能网络管理器不会写入dns
         rm_resolv_conf /os
     }
@@ -4237,9 +3529,8 @@ EOF
 
         # 16.04 arm64 镜像没有 grub 引导文件
         if is_efi && ! [ -d $os_dir/boot/efi/EFI/ubuntu ]; then
-            chroot_apt_install $os_dir efibootmgr shim "grub-efi-$(get_axx64)"
-            # 创建 ubuntu 文件夹和 grubaa64.efi
-            DEBIAN_FRONTEND=noninteractive chroot $os_dir dpkg-reconfigure "grub-efi-$(get_axx64)"
+            DEBIAN_FRONTEND=noninteractive chroot $os_dir \
+                apt-get upgrade --reinstall -y efibootmgr shim "grub-efi-$(get_axx64)"
 
             cat <<EOF >"$os_dir/boot/efi/EFI/ubuntu/grub.cfg"
 search.fs_uuid $os_part_uuid root
@@ -4248,6 +3539,14 @@ configfile \$prefix/grub.cfg
 EOF
         fi
 
+        # 更新包索引
+        chroot $os_dir apt-get update
+
+        # 安装最佳内核
+        flavor=$(get_ubuntu_kernel_flavor)
+        echo "Use kernel flavor: $flavor"
+        chroot_apt_install $os_dir "linux-image-$flavor"
+
         # 自带内核：
         # 常规版本             generic
         # minimal 20.04/22.04 kvm      # 后台 vnc 无显示
@@ -4255,73 +3554,26 @@ EOF
 
         # debian cloud 内核不支持 ahci，ubuntu virtual 支持
 
-        # 标记所有内核为自动安装
+        # 标记旧内核包
         # 注意排除 linux-base
-        # 返回值始终为 0
-        pkgs=$(chroot $os_dir apt-mark showmanual \
-            linux-generic linux-virtual linux-kvm \
-            linux-image* linux-headers*)
-        chroot $os_dir apt-mark auto $pkgs
+        if pkgs=$(chroot $os_dir apt-mark showmanual linux-* | grep -E 'generic|virtual|kvm' | grep -v $flavor); then
+            chroot $os_dir apt-mark auto $pkgs
 
-        # 安装最佳内核
-        flavor=$(get_ubuntu_kernel_flavor)
-        echo "Use kernel flavor: $flavor"
-        # 如果镜像自带内核跟最佳内核是同一种且有更新
-        # 则 apt install 只会进行更新，不会将包设置成 manual
-        # 需要再运行 apt install 才会将包设置成 manual
-        chroot_apt_install $os_dir "linux-image-$flavor"
-        chroot_apt_install $os_dir "linux-image-$flavor"
-
-        # 使用 autoremove 删除多余内核
-        chroot_apt_autoremove $os_dir
+            # 使用 autoremove
+            chroot_apt_autoremove $os_dir
+        fi
 
         # 安装固件+微码
-        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
-            chroot_apt_install $os_dir $fw_pkgs
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot_apt_install $os_dir $(get_ucode_firmware_pkgs)
         fi
 
-        # 网络配置
-        # 18.04+ netplan
-        if is_have_cmd_on_disk $os_dir netplan; then
-            # 生成 cloud-init 网络配置
-            create_cloud_init_network_config $os_dir/net.cfg
-
-            # ubuntu 18.04 cloud-init 版本 23.1.2，因此不用处理 onlink
-
-            # 如果不是输出到 / 则不会生成 50-cloud-init.yaml
-            # 注意比较多了什么东西
-            if false; then
-                chroot $os_dir cloud-init devel net-convert \
-                    -p /net.cfg -k yaml -d /out -D ubuntu -O netplan
-                sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/out/etc/netplan/50-cloud-init.yaml
-                cp $os_dir/out/etc/netplan/50-cloud-init.yaml $os_dir/etc/netplan/
-
-                # 清理
-                rm -rf $os_dir/net.cfg $os_dir/out
-            else
-                chroot $os_dir cloud-init devel net-convert \
-                    -p /net.cfg -k yaml -d / -D ubuntu -O netplan
-                sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/etc/netplan/50-cloud-init.yaml
-
-                # 清理
-                rm -rf $os_dir/net.cfg
-            fi
-        else
-            # 16.04 镜像用 ifupdown/networking 管理网络
-            # 要安装 resolveconf，不然 /etc/resolv.conf 为空
+        # 16.04 镜像用 ifupdown/networking 管理网络
+        # 要安装 resolveconf，不然 /etc/resolv.conf 为空
+        if [ "$releasever" = 16.04 ]; then
             chroot_apt_install $os_dir resolvconf
             ln -sf /run/resolvconf/resolv.conf $os_dir/etc/resolv.conf.orig
-
-            create_ifupdown_config $os_dir/etc/network/interfaces
-        fi
-
-        # 自带的 60-cloudimg-settings.conf 禁止了 PasswordAuthentication
-        file=$os_dir/etc/ssh/sshd_config.d/60-cloudimg-settings.conf
-        if [ -f $file ]; then
-            sed -i '/^PasswordAuthentication/d' $file
-            if [ -z "$(cat $file)" ]; then
-                rm -f $file
-            fi
         fi
 
         # 安装 bios 引导
@@ -4374,195 +3626,31 @@ EOF
         restore_resolv_conf $os_dir
     }
 
-    efi_mount_opts=$(
-        case "$distro" in
-        ubuntu) echo "umask=0077" ;;
-        *) echo "defaults,uid=0,gid=0,umask=077,shortname=winnt" ;;
-        esac
-    )
+    # anolis/openeuler/opencloudos 可能要安装 cloud-init
+    # opencloudos 无法使用 chroot $os_dir command -v xxx
+    # chroot: failed to run command ‘command’: No such file or directory
+    if is_have_cmd_on_disk $os_dir rpm &&
+        ! is_have_cmd_on_disk $os_dir cloud-init; then
 
-    # yum/apt 安装软件时需要的内存总大小
-    need_ram=$(
-        case "$distro" in
-        ubuntu) echo 1024 ;;
-        *) echo 2048 ;;
-        esac
-    )
-
-    connect_qcow
-
-    # 镜像分区格式
-    # centos/rocky/almalinux/rhel: xfs
-    # oracle x86_64:          lvm + xfs
-    # oracle aarch64 cloud:   xfs
-    # alibaba cloud linux 3:  ext4
-
-    is_lvm_image=false
-    if lsblk -f /dev/nbd0p* | grep LVM2_member; then
-        is_lvm_image=true
-        apk add lvm2
-        lvscan
-        vg=$(pvs | grep /dev/nbd0p | awk '{print $2}')
-        lvchange -ay "$vg"
+        cp_resolv_conf $os_dir
+        chroot_dnf install cloud-init
+        restore_resolv_conf $os_dir
     fi
 
-    # TODO: 系统分区应该是最后一个分区
-    # 选择最大分区
-    os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | awk '{print $1}')
-    efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,PARTTYPE | grep -i "$EFI_UUID" | awk '{print $1}')
-    # 排除前两个，再选择最大分区
-    # almalinux9 boot 分区的类型不是规定的 uuid
-    # openeuler boot 分区是 fat 格式
-    boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs|fat' | awk '{print $1}' |
-        grep -vx "$os_part" | grep -vx "$efi_part" | tail -1 | awk '{print $1}')
-
-    if $is_lvm_image; then
-        os_part="mapper/$os_part"
-    fi
-
-    info "qcow2 Partitions"
-    lsblk -f /dev/nbd0 -o +PARTTYPE
-    echo "Part OS:   $os_part"
-    echo "Part EFI:  $efi_part"
-    echo "Part Boot: $boot_part"
-
-    # 分区寻找方式
-    # 系统/分区          cmdline:root  fstab:efi
-    # rocky             LABEL=rocky   LABEL=EFI
-    # ubuntu            PARTUUID      LABEL=UEFI
-    # 其他el/ol         UUID           UUID
-
-    # read -r os_part_uuid os_part_label < <(lsblk /dev/$os_part -no UUID,LABEL)
-    os_part_uuid=$(lsblk /dev/$os_part -no UUID)
-    os_part_label=$(lsblk /dev/$os_part -no LABEL)
-    os_part_fstype=$(lsblk /dev/$os_part -no FSTYPE)
-
-    if [ -n "$efi_part" ]; then
-        efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
-        efi_part_label=$(lsblk /dev/$efi_part -no LABEL)
-    fi
-
-    mkdir -p /nbd /nbd-boot /nbd-efi
-
-    mount_nouuid() {
-        case "$os_part_fstype" in
-        ext4) mount "$@" ;;
-        xfs) mount -o nouuid "$@" ;;
-        esac
-    }
-
-    # 使用目标系统的格式化程序
-    # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
-    mount_nouuid /dev/$os_part /nbd/
-    mount_pseudo_fs /nbd/
-    case "$os_part_fstype" in
-    ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
-    xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
-    esac
-    umount -R /nbd/
-
-    # TODO: ubuntu 镜像缺少 mkfs.fat/vfat/dosfstools? initrd 不需要检查fs完整性？
-
-    # 创建并挂载 /os
-    mkdir -p /os
-    mount -o noatime /dev/$xda*2 /os/
-
-    # 如果是 efi 则创建 /os/boot/efi
-    # 如果镜像有 efi 分区也创建 /os/boot/efi，用于复制 efi 分区的文件
-    if is_efi || [ -n "$efi_part" ]; then
-        mkdir -p /os/boot/efi/
-
-        # 挂载 /os/boot/efi
-        # 预先挂载 /os/boot/efi 因为可能 boot 和 efi 在同一个分区（openeuler 24.03 arm）
-        # 复制 boot 时可以会复制 efi 的文件
-        if is_efi; then
-            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
-        fi
-    fi
-
-    # 复制系统分区
-    echo Copying os partition...
-    mount_nouuid -o ro /dev/$os_part /nbd/
-    cp -a /nbd/* /os/
-    umount /nbd/
-
-    # 复制boot分区，如果有
-    if [ -n "$boot_part" ]; then
-        echo Copying boot partition...
-        mount_nouuid -o ro /dev/$boot_part /nbd-boot/
-        cp -a /nbd-boot/* /os/boot/
-        umount /nbd-boot/
-    fi
-
-    # 复制efi分区，如果有
-    if [ -n "$efi_part" ]; then
-        echo Copying efi partition...
-        mount -o ro /dev/$efi_part /nbd-efi/
-        cp -a /nbd-efi/* /os/boot/efi/
-        umount /nbd-efi/
-    fi
-
-    # 断开 qcow 并删除 qemu-img
-    info "Disconnecting qcow2"
-    if is_have_cmd vgchange; then
-        vgchange -an
-        apk del lvm2
-    fi
-    disconnect_qcow
-    apk del qemu-img
-
-    # 取消挂载硬盘
-    info "Unmounting disk"
-    if is_efi; then
-        umount /os/boot/efi/
-    fi
-    umount /os/
-    umount /installer/
-
-    # 如果镜像有efi分区，复制其uuid
-    # 如果有相同uuid的fat分区，则无法挂载
-    # 所以要先复制efi分区，断开nbd再复制uuid
-    # 复制uuid前要取消挂载硬盘 efi 分区
-    if is_efi && [ -n "$efi_part_uuid" ]; then
-        info "Copy efi partition uuid"
-        apk add mtools
-        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_part_label
-        apk del mtools
-        update_part
-    fi
-
-    # 删除 installer 分区并扩容
-    info "Delete installer partition"
-    apk add parted
-    parted /dev/$xda -s -- rm 3
-    update_part
-    resize_after_install_cloud_image
-
-    # 重新挂载 /os /boot/efi
-    info "Re-mount disk"
-    mount -o noatime /dev/$xda*2 /os/
-    if is_efi; then
-        mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
-    fi
-
-    # 创建 swap
-    create_swap_if_ram_less_than $need_ram /os/swapfile
-
-    # 挂载伪文件系统
-    mount_pseudo_fs /os/
+    # cloud-init
+    download_cloud_init_config $os_dir
 
     case "$distro" in
     ubuntu) modify_ubuntu ;;
     *) modify_el_ol ;;
     esac
 
-    # 基本配置
-    disable_cloud_init /os
-    basic_init /os
+    # 查看最终的 cloud-init 配置
+    cat /os/etc/cloud/cloud.cfg.d/99_*.cfg
 
-    # 删除 swapfile
+    # 删除installer分区，重启后cloud init会自动扩容
     swapoff -a
-    rm -f /os/swapfile
+    parted /dev/$xda -s rm 3
 }
 
 get_partition_table_format() {
@@ -4745,7 +3833,8 @@ resize_after_install_cloud_image() {
         < <(parted -msf /dev/$xda 'unit b print' | tail -1)
     last_part_end=$(echo $last_part_end | sed 's/B//')
 
-    if [ $((disk_end - last_part_end)) -ge 0 ]; then
+    # 大于 100M 才扩容
+    if [ $((disk_end - last_part_end)) -ge $((100 * 1024 * 1024)) ]; then
         printf "yes" | parted /dev/$xda resizepart $last_part_num 100% ---pretend-input-tty
         update_part
 
@@ -4815,7 +3904,7 @@ mount_part_for_iso_installer() {
     info "Mount part for iso installer"
 
     if [ "$distro" = windows ]; then
-        mount_args="-t ntfs3 -o nocase"
+        mount_args="-t ntfs3"
     else
         mount_args=
     fi
@@ -4998,28 +4087,7 @@ get_filesize_mb() {
     du -m "$1" | awk '{print $1}'
 }
 
-is_absolute_path() {
-    # 检查路径是否以/开头
-    # 注意语法和 bash 不同
-    [[ "$1" = "/*" ]]
-}
-
 install_windows() {
-    get_wim_prop() {
-        wim=$1
-        property=$2
-
-        wiminfo "$wim" | grep -i "^$property:" | cut -d: -f2- | xargs
-    }
-
-    get_image_prop() {
-        wim=$1
-        index=$2
-        property=$3
-
-        wiminfo "$wim" "$index" | grep -i "^$property:" | cut -d: -f2- | xargs
-    }
-
     info "Process windows iso"
 
     apk add wimlib
@@ -5028,29 +4096,12 @@ install_windows() {
     mkdir -p /iso
     mount -o ro /os/windows.iso /iso
 
-    # 防止用了不兼容架构的 iso
-    boot_index=$(get_wim_prop /iso/sources/boot.wim 'Boot Index')
-    arch_wim=$(get_image_prop /iso/sources/boot.wim "$boot_index" 'Architecture' | to_lower)
-    if ! {
-        { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86_64 ]; } ||
-            { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86 ]; } ||
-            { [ "$(uname -m)" = "aarch64" ] && [ "$arch_wim" = arm64 ]; }
-    }; then
-        error_and_exit "The machine is $(uname -m), but the iso is $arch_wim."
-    fi
-
-    # efi 机器不能安装 32 位 windows
-    if is_efi && [ "$arch_wim" = x86 ]; then
-        error_and_exit "EFI machine can't install 32-bit Windows."
-    fi
-
     if [ -e /iso/sources/install.esd ]; then
         iso_install_wim=/iso/sources/install.esd
-        install_wim=/os/installer/sources/install.esd
     else
         iso_install_wim=/iso/sources/install.wim
-        install_wim=/os/installer/sources/install.wim
     fi
+    install_wim=/os/installer/sources/install.wim
 
     # 匹配映像版本
     # 需要整行匹配，因为要区分 Windows 10 Pro 和 Windows 10 Pro for Workstations
@@ -5088,57 +4139,42 @@ install_windows() {
         done
     fi
 
-    get_selected_image_prop() {
-        get_image_prop "$iso_install_wim" "$image_name" "$1"
+    get_boot_wim_prop() {
+        property=$1
+        wiminfo "/os/boot.wim" | grep -i "^$property:" | cut -d: -f2- | xargs
     }
 
-    # 多会话的信息来自注册表，因为没有官方 iso
+    get_selected_image_prop() {
+        property=$1
+        wiminfo "$iso_install_wim" "$image_name" | grep -i "^$property:" | cut -d: -f2- | xargs
+    }
 
-    # Installation Type:
+    # PRODUCTTYPE:
+    # - WinNT    (普通 windows)
+    # - ServerNT (windows server)
+
+    # INSTALLATIONTYPE:
     # - Client      (普通 windows)
     # - Server      (windows server 带桌面体验)
     # - Server Core (windows server 不带桌面体验)
-    # - Embedded    (WES7 / Thin PC)
-    # - Client      (windows 10/11 enterprise 多会话)
-
-    # Product Type:
-    # https://cloud.tencent.com/developer/article/2465206
-    # https://learn.microsoft.com/en-us/azure/virtual-desktop/windows-multisession-faq#why-does-my-application-report-windows-enterprise-multi-session-as-a-server-operating-system
-    # - WinNT    (普通 windows)
-    # - ServerNT (windows server 带桌面体验)
-    # - ServerNT (windows server 不带桌面体验)
-    # - WinNT    (WES7 / Thin PC)
-    # - ServerNT (windows 10/11 enterprise 多会话)
-
-    # Product Suite:
-    # https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/exinit/productsuite.htm
-    # - Terminal Server  (普通 windows)
-    # - Enterprise      (windows server 带桌面体验)
-    # - Enterprise      (windows server 不带桌面体验)
-    # - Terminal Server  (WES7 / Thin PC)
-    # - ?                (windows 10/11 enterprise 多会话)
 
     # 用内核版本号筛选驱动
     # 使得可以安装 Hyper-V Server / Azure Stack HCI 等 Windows Server 变种
     nt_ver=$(get_selected_image_prop "Major Version").$(get_selected_image_prop "Minor Version")
     build_ver=$(get_selected_image_prop "Build")
-    product_suite=$(get_selected_image_prop "Product Suite")
+    product_type=$(get_selected_image_prop "Product Type")
 
-    case "$product_suite" in
-    'Terminal Server')
-        windows_type=client
-        product_ver=$(get_client_name_by_build_ver "$build_ver")
-        ;;
-    *)
-        windows_type=server
-        product_ver=$(get_server_name_by_build_ver "$build_ver")
-        ;;
-    esac
+    product_ver=$(
+        case $product_type in
+        WinNT) get_client_name_by_build_ver "$build_ver" ;;
+        ServerNT) get_server_name_by_build_ver "$build_ver" ;;
+        esac
+    )
 
     info "Selected image info"
     echo "Image Name: $image_name"
     echo "Product Version: $product_ver"
-    echo "Windows Type: $windows_type"
+    echo "Product Type: $product_type"
     echo "NT Version: $nt_ver"
     echo "Build Version: $build_ver"
     echo
@@ -5174,7 +4210,6 @@ install_windows() {
         rsync -rv \
             --exclude=/sources/boot.wim \
             --exclude=/sources/install.wim \
-            --exclude=/sources/install.esd \
             /iso/* /os/installer/
     else
         (
@@ -5182,21 +4217,19 @@ install_windows() {
             find . -type f \
                 -not -name boot.wim \
                 -not -name install.wim \
-                -not -name install.esd \
                 -exec cp -r --parents {} /os/installer/ \;
         )
     fi
 
     # 优化 install.wim
-    # 优点: 可以节省 200M~600M 空间，用来创建虚拟内存
-    #       （意义不大，因为已经删除了 boot.wim 用来创建虚拟内存，vista 除外）
+    # 优点1: 可以节省 200M~600M 空间，用来创建虚拟内存
+    #       （意义不大，因为已经删除了 boot.wim 用来创建虚拟内存）
+    # 优点2: 可以将 esd 转为 wim，但要提前预留更多空间
     # 缺点: 如果 install.wim 只有一个镜像，则只能缩小 10M+
     if false; then
         time wimexport --threads "$(get_build_threads 512)" "$iso_install_wim" "$image_name" "$install_wim"
-        info "install.wim size"
-        echo "Original:  $(get_filesize_mb "$iso_install_wim")"
+        echo "Original: $(get_filesize_mb "$iso_install_wim")"
         echo "Optimized: $(get_filesize_mb "$install_wim")"
-        echo
     else
         cp "$iso_install_wim" "$install_wim"
     fi
@@ -5210,13 +4243,14 @@ install_windows() {
     fi
 
     # 变量名     使用场景
-    # arch_uname arch命令 / uname -m                      x86_64   aarch64
-    # arch_wim   wiminfo                             x86  x86_64   ARM64
-    # arch       virtio iso / unattend.xml / .inf    x86  amd64    arm64
-    # arch_xdd   virtio msi / xen驱动                x86   x64
-    # arch_dd    华为云驱动                           32    64
+    # arch_uname arch命令 / uname -m             x86_64  aarch64
+    # arch_wim   wiminfo                    x86  x86_64  ARM64
+    # arch       virtio iso / unattend.xml  x86  amd64   arm64
+    # arch_xdd   virtio msi / xen驱动       x86  x64
+    # arch_dd    华为云驱动                   32   64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
+    arch_wim=$(get_selected_image_prop Architecture | to_lower)
     case "$arch_wim" in
     x86)
         arch=x86
@@ -5235,15 +4269,21 @@ install_windows() {
         ;;
     esac
 
+    # 防止用了不兼容架构的 iso
+    if ! {
+        { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86_64 ]; } ||
+            { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86 ]; } ||
+            { [ "$(uname -m)" = "aarch64" ] && [ "$arch_wim" = arm64 ]; }
+    }; then
+        error_and_exit "The machine is $(uname -m), but the iso is $arch_wim."
+    fi
+
     add_drivers() {
         info "Add drivers"
 
         drv=/os/drivers
-        mkdir -p "$drv" # 驱动下载临时文件夹
-
-        # 下载脚本
-        # shellcheck disable=SC1090
-        . <(wget -O- $confhome/windows-driver-utils.sh)
+        mkdir -p "$drv"         # 驱动下载临时文件夹
+        mkdir -p "/wim/drivers" # boot.wim 驱动文件夹
 
         # 这里有坑
         # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
@@ -5303,9 +4343,6 @@ install_windows() {
             add_driver_gcp
             ;;
         esac
-
-        # 自定义驱动
-        add_driver_custom
     }
 
     # aws nitro
@@ -5372,7 +4409,6 @@ install_windows() {
             case "$nt_ver" in
             6.1) echo 8.3.2 ;; # sha1 签名
             # 6.1) echo 8.3.5 ;; # sha256 签名
-            6.2 | 6.3) echo 8.4.3 ;;
             *) echo Latest ;;
             esac
         )
@@ -5386,18 +4422,6 @@ install_windows() {
 
         cp_drivers $drv/xen -ipath "*/$arch_xdd/*"
     }
-
-    # citrix xen
-    # https://pvupdates.vmd.citrix.com/updates.json 7.2.0.1555
-    # https://pvupdates.vmd.citrix.com/updates.v9.json 9.3.3.125
-    # https://pvupdates.vmd.citrix.com/autoupdate.v1.json 9.3.3.125
-    # https://pvupdates.vmd.citrix.com/autoupdate.v2.json 9.4.0.146
-    # https://support.citrix.com/s/article/CTX235403-updates-to-xenserver-vm-tools-for-windows-for-xenserver-and-citrix-hypervisor
-
-    # 最高版本
-    # 2012 r2   9.3.1
-    # 2012      9.3.0
-    # 2008 (r2) 7.2.0.1555
 
     # xen
     # 没签名，暂时用aws的驱动代替
@@ -5432,29 +4456,19 @@ install_windows() {
             case "$(echo "$product_ver" | to_lower)" in
             'vista') echo 2k8 ;; # 没有 vista 文件夹
             *)
-                case "$windows_type" in
-                client) echo "w$product_ver" ;;
-                server) echo "$product_ver" | sed -E -e 's/ //' -e 's/^200?/2k/' -e 's/r2/R2/' ;;
+                case "$product_type" in
+                WinNT) echo "w$product_ver" ;;
+                ServerNT) echo "$product_ver" | sed -E -e 's/ //' -e 's/^200?/2k/' -e 's/r2/R2/' ;;
                 esac
                 ;;
             esac
         )
 
-        # https://fedorapeople.org/groups/virt/virtio-win/repo/stable/
-        # 171-1        是稳定版
-        # 173-9        不是稳定版?
-        # 185 ~ 187    win7 vioscsi 是 sha256 签名
-        # 189 ~ 215    win7 vultr 气球驱动死机
-        # 217 ~ 266    win7 甲骨文 vioscsi 用不了，即使是红帽的 virtio-win-1.9.44 也用不了
-        # 217 ~ 266    2k12 证书有问题
-
-        # 2008 安装的气球驱动不能用，需要到硬件管理器重新安装设备才能用，无需更新驱动
-
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
         case "$nt_ver" in
         6.0 | 6.1) dir=archive-virtio/virtio-win-0.1.173-9 ;; # vista|w7|2k8|2k8R2
-        6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-2 ;; # w8|w8.1|2k12|2k12R2
+        6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-1 ;; # w8|w8.1|2k12|2k12R2
         *) dir=stable-virtio ;;
         esac
 
@@ -5472,8 +4486,12 @@ install_windows() {
             mkdir -p $drv/virtio
             mount -o ro $drv/virtio.iso $drv/virtio
 
-            # -not -ipath "*/balloon/*"
-            cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*"
+            if [ "$nt_ver" = 6.0 ] || [ "$nt_ver" = 6.1 ]; then
+                # vista/7 气球驱动有问题
+                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" -not -ipath "*/balloon/*"
+            else
+                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*"
+            fi
         else
             # coreutils 的 cp mv rm 才有 -v 参数
             apk add 7zip file coreutils
@@ -5519,6 +4537,8 @@ install_windows() {
                     mv -v "$file" "$new_file"
                 done
             )
+            # 虽然 vista/7 气球驱动有问题，但 msi 里面没有 vista/7 驱动
+            # 因此不用额外处理
             cp_drivers $drv/virtio
         fi
     }
@@ -5622,7 +4642,7 @@ install_windows() {
 
             mkdir -p $drv/gce/$name
             link=$(grep -o "/pool/.*-google-compute-engine-driver-$name.*\.goo" /tmp/gce.json)
-            wget $gce_repo$link -O- | tar xz -C $drv/gce/$name
+            wget $gce_repo$link -O- | tar -xzf- -C $drv/gce/$name
 
             # 没有 win6.0 文件夹
             # 但 inf 没限制
@@ -5634,17 +4654,11 @@ install_windows() {
                     fi
                 done
             fi
-
-            case "$name" in
-            gvnic)
-                [ "$arch_wim" = x86 ] && suffix=-32 || suffix=
-                cp_drivers $drv/gce/gvnic -ipath "*/win$nt_ver$suffix/*"
-                ;;
-            gga)
-                cp_drivers $drv/gce/gga -ipath "*/win$nt_ver/*"
-                ;;
-            esac
         done
+
+        [ "$arch_wim" = x86 ] && gvnic_suffix=-32 || gvnic_suffix=
+        cp_drivers $drv/gce/gvnic -ipath "*/win$nt_ver$gvnic_suffix/*"
+        cp_drivers $drv/gce/gga -ipath "*/win$nt_ver/*"
     }
 
     # azure
@@ -5663,20 +4677,6 @@ install_windows() {
         7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
         7z x $drv/SetupRST/.text -o$drv/vmd
         cp_drivers $drv/vmd
-    }
-
-    # 脚本自动检测驱动可能有问题
-    # 假设是 win7 时代的网卡，官网没有 win10 驱动，系统也不自带
-    # 但实际上 win10 可以用 win7 的驱动
-    # 这种情况即使脚本自动下载 win10 的驱动包，也不会包含这个驱动
-    # 应该下载 win7 的驱动
-    # 因此只能交给用户自己添加驱动
-
-    add_driver_custom() {
-        if [ -d /custom_drivers/ ]; then
-            cp_drivers custom /custom_drivers/
-            # 复制后不删除，因为脚本可能再次运行
-        fi
     }
 
     # 修改应答文件
@@ -5710,7 +4710,7 @@ install_windows() {
     # 评估版 iso ei.cfg 有 EVAL 字样，填空白 key 报错 Windows Cannot find Microsoft software license terms
 
     # key
-    if [[ "$image_name" = 'Windows Vista*' ]]; then
+    if [[ "$image_name" = 'Windows Vista'* ]]; then
         # vista 需密钥，密钥可与 edition 不一致
         # TODO: 改成从网页获取？
         # https://learn.microsoft.com/en-us/windows-server/get-started/kms-client-activation-keys
@@ -5727,34 +4727,22 @@ install_windows() {
         fi
     fi
 
-    mkdir -p /wim
-
-    # 挂载 install.wim，检查是否有 sac 组件
-    wimmount "$install_wim" "$image_name" /wim/
-    [ -f /wim/Windows/System32/sacsess.exe ] && has_sac=true || has_sac=false
-    wimunmount /wim/
-
     # 挂载 boot.wim
     info "mount boot.wim"
+    mkdir -p /wim
+    boot_index=$(get_boot_wim_prop 'Boot Index')
     wimmountrw /os/boot.wim "$boot_index" /wim/
 
     cp_drivers() {
-        if [ "$1" = custom ]; then
-            shift
-            dst="/wim/custom_drivers"
-        else
-            dst=/wim/drivers
-        fi
-
         src=$1
         shift
 
-        # -not -iname "*.pdb" \
-        # -not -iname "dpinst.exe" \
-
-        find $src -type f -iname "*.inf" "$@" | while read -r inf; do
-            parse_inf_and_cp_driever "$inf" "$dst" "$arch" false
-        done
+        find $src \
+            -type f \
+            -not -iname "*.pdb" \
+            -not -iname "dpinst.exe" \
+            "$@" \
+            -exec cp -rfv {} /wim/drivers \;
     }
 
     # 添加驱动
@@ -5782,41 +4770,14 @@ install_windows() {
 
     # 复制安装脚本
     # https://slightlyovercomplicated.com/2016/11/07/windows-pe-startup-sequence-explained/
-    # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-vista/cc721977(v=ws.10)
     mv /wim/setup.exe /wim/setup.exe.disabled
 
     # 如果有重复的 Windows/System32 文件夹，会提示找不到 winload.exe 无法引导
-    # win7 win10  boot.wim 是 Windows/System32，install.wim 是 Windows/System32
-    # win2016     boot.wim 是 windows/system32，install.wim 是 Windows/System32
-    # wimmount 无法挂载成忽略大小写
+    # win7 win10 是 Windows/System32
+    # win2016    是 windows/system32
     # shellcheck disable=SC2010
     system32_dir=$(ls -d /wim/*/*32 | grep -i windows/system32)
     download $confhome/windows-setup.bat $system32_dir/startnet.cmd
-    # dism 手动释放镜像时用
-    # sed -i "s|@image_name@|$image_name|" $system32_dir/startnet.cmd
-
-    # shellcheck disable=SC2154
-    if [ "$force_old_windows_setup" = 1 ]; then
-        sed -i 's/ForceOldSetup=0/ForceOldSetup=1/i' $system32_dir/startnet.cmd
-    fi
-
-    # 有 SAC 组件时，启用 EMS
-    if $has_sac; then
-        sed -i 's/EnableEMS=0/EnableEMS=1/i' $system32_dir/startnet.cmd
-    fi
-
-    # Windows Thin PC 有 Windows\System32\winpeshl.ini
-    # [LaunchApps]
-    # %SYSTEMDRIVE%\windows\system32\drvload.exe, %SYSTEMDRIVE%\windows\inf\sdbus.inf
-    # %SYSTEMDRIVE%\setup.exe
-    if [ -f $system32_dir/winpeshl.ini ]; then
-        info "mod winpeshl.ini"
-        # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-vista/cc721977(v=ws.10)
-        # 两种方法都可以，第一种是原版命令
-        sed -i 's|setup.exe|windows\\system32\\cmd.exe, "/k %SYSTEMROOT%\\system32\\startnet.cmd"|i' $system32_dir/winpeshl.ini
-        # sed -i 's|setup.exe|windows\\system32\\startnet.cmd|i' $system32_dir/winpeshl.ini
-        cat -n $system32_dir/winpeshl.ini
-    fi
 
     # 提交修改 boot.wim
     info "Unmount boot.wim"
@@ -5841,11 +4802,10 @@ install_windows() {
         images=all
     fi
     wimexport --boot /os/boot.wim "$images" $boot_dir/sources/boot.wim
-    info "boot.wim size"
-    echo "Original:      $(get_filesize_mb /iso/sources/boot.wim)"
+    echo "boot.wim size:"
+    echo "Original: $(get_filesize_mb /iso/sources/boot.wim)"
     echo "Added Drivers: $(get_filesize_mb /os/boot.wim)"
-    echo "Optimized:     $(get_filesize_mb "$boot_dir/sources/boot.wim")"
-    echo
+    echo "Optimized: $(get_filesize_mb "$boot_dir/sources/boot.wim")"
 
     # vista 安装时需要 boot.wim，原因见上面
     if [ "$nt_ver" = 6.0 ] &&
@@ -5856,7 +4816,8 @@ install_windows() {
     # windows 7 没有 invoke-webrequest
     # installer分区盘符不一定是D盘
     # 所以复制 resize.bat 到 install.wim
-    if true; then
+    # TODO: 由于esd文件无法修改，要将resize.bat放到boot.wim
+    if [[ "$install_wim" = '*.wim' ]]; then
         info "mount install.wim"
         wimmountrw $install_wim "$image_name" /wim/
         if false; then
@@ -5921,48 +4882,6 @@ refind_main_disk() {
     fi
 }
 
-sync_time() {
-    if false; then
-        # arm要手动从硬件同步时间，避免访问https出错
-        # do 机器第二次运行会报错
-        hwclock -s || true
-    fi
-
-    # ntp 时间差太多会无法同步？
-    # http 时间可能不准确，毕竟不是专门的时间服务器
-    #      也有可能没有 date header?
-    method=http
-
-    case "$method" in
-    ntp)
-        if is_in_china; then
-            ntp_server=ntp.aliyun.com
-        else
-            ntp_server=pool.ntp.org
-        fi
-        # -d[d]   Verbose
-        # -n      Run in foreground
-        # -q      Quit after clock is set
-        # -p      PEER
-        ntpd -d -n -q -p "$ntp_server"
-        ;;
-    http)
-        url="$(grep -m1 ^http /etc/apk/repositories)/$(uname -m)/APKINDEX.tar.gz"
-        # 可能有多行，取第一行
-        date_header=$(wget -S --no-check-certificate --spider "$url" 2>&1 | grep -m1 '^  Date:')
-        # gnu date 不支持 -D
-        busybox date -u -D "  Date: %a, %d %b %Y %H:%M:%S GMT" -s "$date_header"
-        ;;
-    esac
-
-    hwclock -w
-}
-
-is_ubuntu_lts() {
-    IFS=. read -r major minor < <(echo "$releasever")
-    [ $((major % 2)) = 0 ] && [ $minor = 04 ]
-}
-
 get_ubuntu_kernel_flavor() {
     # 20.04/22.04 kvm 内核 vnc 没显示
     # 24.04 kvm = virtual
@@ -5991,11 +4910,10 @@ get_ubuntu_kernel_flavor() {
         case "$vendor" in
         aws | gcp | oracle | azure | ibm) echo $vendor ;;
         *)
-            is_ubuntu_lts && suffix=-hwe-$releasever || suffix=
             if is_virt; then
-                echo virtual$suffix
+                echo virtual-hwe-$releasever
             else
-                echo generic$suffix
+                echo generic-hwe-$releasever
             fi
             ;;
         esac
@@ -6019,7 +4937,7 @@ install_redhat_ubuntu() {
     # 重新整理 extra，因为grub会处理掉引号，要重新添加引号
     extra_cmdline=''
     for var in $(grep -o '\bextra_[^ ]*' /proc/cmdline | xargs); do
-        if [[ "$var" = "extra_main_disk=*" ]]; then
+        if [[ "$var" = "extra_main_disk="* ]]; then
             # 重新记录主硬盘
             refind_main_disk
             extra_cmdline="$extra_cmdline extra_main_disk=$main_disk"
@@ -6136,7 +5054,7 @@ trans() {
             create_part
             download_qcow
             case "$distro" in
-            centos | almalinux | rocky | oracle | redhat | anolis | opencloudos | openeuler)
+            centos | alma | rocky | oracle | redhat | anolis | opencloudos | openeuler)
                 # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
                 install_qcow_by_copy
                 ;;
@@ -6179,23 +5097,19 @@ trans() {
         alpine)
             install_alpine
             ;;
-        arch | gentoo | aosc)
+        arch | gentoo)
             create_part
-            install_arch_gentoo_aosc
+            install_arch_gentoo
             ;;
         nixos)
             create_part
             install_nixos
             ;;
-        fnos)
-            create_part
-            install_fnos
-            ;;
         *)
             create_part
             mount_part_for_iso_installer
             case "$distro" in
-            centos | almalinux | rocky | fedora | ubuntu | redhat) install_redhat_ubuntu ;;
+            centos | alma | rocky | fedora | ubuntu | redhat) install_redhat_ubuntu ;;
             windows) install_windows ;;
             esac
             ;;
@@ -6254,14 +5168,9 @@ fi
 # 允许 ramdisk 使用所有内存，默认是 50%
 mount / -o remount,size=100%
 
-# 同步时间
-# 1. 可以防止访问 https 出错
-# 2. 可以防止 https://github.com/bin456789/reinstall/issues/223
-#    E: Release file for http://security.ubuntu.com/ubuntu/dists/noble-security/InRelease is not valid yet (invalid for another 5h 37min 18s).
-#    Updates for this repository will not be applied.
-# 3. 不能直接读取 rtc，因为默认情况 windows rtc 是本地时间，linux rtc 是 utc 时间
-# 4. 允许同步失败，因为不是关键步骤
-sync_time || true
+# arm要手动从硬件同步时间，避免访问https出错
+# do 机器第二次运行会报错
+hwclock -s || true
 
 # 设置密码，安装并打开 ssh
 echo "root:$(get_password_linux_sha512)" | chpasswd -e
