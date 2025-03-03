@@ -41,15 +41,23 @@ rem 重启服务 可以用 sc 或者 net
 rem UmRdpService 依赖 TermService
 rem sc stop 不能处理依赖关系，因此 sc stop TermService 前需要 sc stop UmRdpService
 rem net stop 可以处理依赖关系
-rem sc stop 是异步的，rem net stop 不是异步，但有 timeout 时间
+rem sc stop 是异步的，net stop 不是异步，但有 timeout 时间
 rem TermService 运行后，UmRdpService 会自动运行
 
 rem 如果刚好系统在启动 rdp 服务，则会失败，因此要用 goto 循环
 rem The Remote Desktop Services service could not be stopped.
 
+rem 有的机器会死循环，开机 logo 不断转圈
+rem 通过 netstat netstat -ano 可以看到端口已修改成功，但rdp服务不断重启 (pid一直改变)
+rem 因此限定重试次数避免死循环
+
+set retryCount=5
+
 :restartRDP
+if %retryCount% LEQ 0 goto :del
 net stop TermService /y && net start TermService || (
-    timeout 5
+    set /a retryCount-=1
+    timeout 10
     goto :restartRDP
 )
 
