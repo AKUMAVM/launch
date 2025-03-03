@@ -8,7 +8,7 @@ confhome=https://raw.githubusercontent.com/AKUMAVM/launch/main
 # confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
 
 # 用于判断 mark.sh 和 trans.sh 是否兼容
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0003
 DEFAULT_PASSWORD=123@@@
 
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
