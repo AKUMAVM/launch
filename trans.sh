@@ -328,35 +328,38 @@ get_ttys() {
 }
 
 find_xda() {
-    # 出错后再运行脚本，硬盘可能已经格式化，之前记录的分区表 id 无效
-    # 因此找到 xda 后要保存 xda 到 /config/xda
+    # If the script is re-run after an error, the disk may already be formatted
+    # The previously recorded partition table ID may be invalid.
+    # Therefore, after finding `xda`, save it to `/config/xda`.
 
-    # 先读取之前保存的
+    # First, check the previously saved disk
     if xda=$(get_config xda 2>/dev/null) && [ -n "$xda" ]; then
         return
     fi
 
-    # 防止 $main_disk 为空
+    # Prevent an empty $main_disk value
     if [ -z "$main_disk" ]; then
-        error_and_exit "cmdline main_disk is empty."
+        error_and_exit "ERROR: cmdline main_disk is empty."
     fi
 
-    # busybox fdisk/lsblk/blkid 不显示 mbr 分区表 id
-    # 可用以下工具：
-    # fdisk 在 util-linux-misc 里面，占用大
-    # sfdisk 占用小
-    # lsblk
-    # blkid
+    # BusyBox's fdisk/lsblk/blkid does not show MBR partition table ID.
+    # Possible tools:
+    # - `fdisk` (in util-linux-misc, large size)
+    # - `sfdisk` (smaller size)
+    # - `lsblk`
+    # - `blkid`
 
-    tool=sfdisk
+    tool="sfdisk"
 
-    is_have_cmd $tool && need_install_tool=false || need_install_tool=true
-    if $need_install_tool; then
-        apk add $tool
+    if is_have_cmd "$tool"; then
+        need_install_tool=false
+    else
+        need_install_tool=true
+        apk add "$tool"
     fi
 
-    if [ "$tool" = sfdisk ]; then
-        # sfdisk
+    if [ "$tool" = "sfdisk" ]; then
+        # Use sfdisk to find the disk ID
         for disk in $(get_all_disks); do
             if sfdisk --disk-id "/dev/$disk" | sed 's/0x//' | grep -ix "$main_disk"; then
                 xda=$disk
@@ -364,18 +367,19 @@ find_xda() {
             fi
         done
     else
-        # lsblk
+        # Use lsblk as a fallback method
         xda=$(lsblk --nodeps -rno NAME,PTUUID | grep -iw "$main_disk" | awk '{print $1}')
     fi
 
     if [ -n "$xda" ]; then
         set_config xda "$xda"
     else
-        error_and_exit "Could not find xda: $main_disk"
+        error_and_exit "ERROR: Could not find xda for main_disk: $main_disk"
     fi
 
+    # Remove the installed tool if it was added
     if $need_install_tool; then
-        apk del $tool
+        apk del "$tool"
     fi
 }
 
