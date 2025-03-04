@@ -3103,7 +3103,7 @@ EOF
     # 最近 kali initrd 删除了原版 wget
     # 但 initrd 的 busybox wget 又不支持 https
     # 因此改成在这里下载
-    curl -LO "$confhome/get-xda.sh"
+    curl -LO "$confhome/get-xda2.sh"
     curl -LO "$confhome/ttys.sh"
 
     # 可以节省一点内存？
