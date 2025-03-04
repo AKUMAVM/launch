@@ -1968,7 +1968,8 @@ install_pkg() {
         zypper) zypper install -y $pkg ;;
         apk)
             add_community_repo_for_alpine
-            apk add $pkg
+            apk cache clean
+            apk add --force-refresh $pkg
             ;;
         apt-get)
             [ -z "$apt_updated" ] && apt-get update && apt_updated=1
