@@ -10,7 +10,7 @@ confhome=https://raw.githubusercontent.com/AKUMAVM/launch/main
 # 默认密码
 DEFAULT_PASSWORD=123@@@
 
-# 用于判断 mark2.sh 和 trans.sh 是否兼容
+# 用于判断 mark.sh 和 trans.sh 是否兼容
 SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0003
 
 # 记录要用到的 windows 程序，运行时输出删除 \r
@@ -21,7 +21,7 @@ WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
 export LC_ALL=C
 
 # 处理部分用户用 su 切换成 root 导致环境变量没 sbin 目录
-# 也能处理 cygwin bash 没有添加 -l 运行 mark2.sh
+# 也能处理 cygwin bash 没有添加 -l 运行 mark.sh
 # 不要漏了最后的 $PATH，否则会找不到 windows 系统程序例如 diskpart
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
@@ -42,7 +42,7 @@ usage_and_exit() {
     if is_in_windows; then
         reinstall_____='.\mark.bat'
     else
-        reinstall_____=' ./mark2.sh'
+        reinstall_____=' ./mark.sh'
     fi
     cat <<EOF
 Usage: $reinstall_____ anolis      7|8|23
@@ -3466,8 +3466,8 @@ mod_initrd() {
     curl -Lo $initrd_dir/trans.sh $confhome/trans.sh
     if ! grep -iq "$SCRIPT_VERSION" $initrd_dir/trans.sh; then
         error_and_exit "
-This script is outdated, please download mark2.sh again.
-脚本有更新，请重新下载 mark2.sh"
+This script is outdated, please download mark.sh again.
+脚本有更新，请重新下载 mark.sh"
     fi
 
     curl -Lo $initrd_dir/initrd-network.sh $confhome/initrd-network.sh
