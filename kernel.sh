@@ -1,10 +1,10 @@
 #!/bin/sh
 
-if [[ $EUID -ne 0 ]]; then
-    clear
-    echo "Error: This script must be run as root!" 1>&2
-    exit 1
-fi
+#if [[ $EUID -ne 0 ]]; then
+#    clear
+#   echo "Error: This script must be run as root!" 1>&2
+#    exit 1
+#fi
 
 if [ -f "/usr/bin/yum" ] && [ -d "/etc/yum.repos.d" ]; then
     yum update -y
