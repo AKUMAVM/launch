@@ -78,8 +78,5 @@ REM Set account lockout threshold to 0 (disable)
 net accounts /lockoutthreshold:0
 net accounts | find /i "Lockout threshold"
 
-REM Restart the server after execution
-shutdown /r /t 10 /f
-
 rem Delete script file after execution
 del "%~f0"
