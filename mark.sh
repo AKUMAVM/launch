@@ -2303,7 +2303,7 @@ if [ $os_across_disks_count -eq 1 ]; then
 else
     # Selecting the first disk and reassigning to $xda
     xda=$(head -n 1 <<<"$xda")
-    warning "OS found across $os_across_disks_count disks. Choosing the first disk: $xda"
+   echo warning "OS found across $os_across_disks_count disks. Choosing the first disk: $xda"
     info "Main disk: $xda"
 fi
 
@@ -3936,7 +3936,7 @@ if is_efi; then
             -type f -name 'custom.cfg' -exec rm -f {} \;
 
         install_pkg efibootmgr
-        efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
+        efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext || true
         efibootmgr | grep_efi_entry | grep 'reinstall' | grep_efi_index |
             xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
     fi
