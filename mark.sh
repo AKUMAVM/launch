@@ -2568,19 +2568,6 @@ get_part_num_by_part() {
 }
 
 grep_efi_entry() {
-    # efibootmgr
-    # BootCurrent: 0002
-    # Timeout: 1 seconds
-    # BootOrder: 0000,0002,0003,0001
-    # Boot0000* sles-secureboot
-    # Boot0001* CD/DVD Rom
-    # Boot0002* Hard Disk
-    # Boot0003* sles-secureboot
-    # MirroredPercentageAbove4G: 0.00
-    # MirrorMemoryBelow4GB: false
-
-    # 根据文档，* 表示 active，也就是说有可能没有*(代表inactive)
-    # https://manpages.debian.org/testing/efibootmgr/efibootmgr.8.en.html
     grep -E '^Boot[0-9a-fA-F]{4}'
 }
 
@@ -2590,14 +2577,13 @@ grep_efi_index() {
 
 add_efi_entry_in_linux() {
     source=$1
-
     install_pkg efibootmgr
 
     for efi_part in $(get_maybe_efi_dirs_in_linux); do
-        if find $efi_part -iname "*.efi" >/dev/null; then
-            dist_dir=$efi_part/EFI/reinstall
-            basename=$(basename $source)
-            mkdir -p $dist_dir
+        if find "$efi_part" -iname "*.efi" >/dev/null; then
+            dist_dir="$efi_part/EFI/reinstall"
+            basename=$(basename "$source")
+            mkdir -p "$dist_dir"
 
             if [[ "$source" = http* ]]; then
                 curl -Lo "$dist_dir/$basename" "$source"
@@ -2605,30 +2591,45 @@ add_efi_entry_in_linux() {
                 cp -f "$source" "$dist_dir/$basename"
             fi
 
-            if false; then
-                grub_probe="$(command -v grub-probe grub2-probe)"
-                dev_part="$("$grub_probe" -t device "$dist_dir")"
-            else
-                install_pkg findmnt
-                # arch findmnt 会得到
-                # systemd-1
-                # /dev/sda2
-                dev_part=$(findmnt -T "$dist_dir" -no SOURCE | grep '^/dev/')
+            install_pkg findmnt
+            dev_part=$(findmnt -T "$dist_dir" -no SOURCE | grep '^/dev/')
+            
+            if [[ -z "$dev_part" ]]; then
+                echo "Error: Unable to determine device partition for $dist_dir"
+                return 1
             fi
 
+            disk="/dev/$(get_disk_by_part "$dev_part")"
+            part_num="$(get_part_num_by_part "$dev_part")"
+            
+            if [[ -z "$disk" || -z "$part_num" ]]; then
+                echo "Error: Failed to retrieve disk or partition number"
+                return 1
+            fi
+
+            echo "Creating EFI boot entry on $disk, partition $part_num"
             id=$(efibootmgr --create-only \
-                --disk "/dev/$(get_disk_by_part $dev_part)" \
-                --part "$(get_part_num_by_part $dev_part)" \
+                --disk "$disk" \
+                --part "$part_num" \
                 --label "$(get_entry_name)" \
-                --loader "\\EFI\\reinstall\\$basename" |
+                --loader "\\EFI\\reinstall\\$basename" | \
                 grep_efi_entry | tail -1 | grep_efi_index)
-            efibootmgr --bootnext $id
-            return
+
+            if [[ -z "$id" ]]; then
+                echo "Error: Failed to retrieve boot entry ID"
+                return 1
+            fi
+
+            echo "Setting BootNext to $id"
+            efibootmgr --bootnext "$id"
+            return 0
         fi
     done
 
-    error_and_exit "Can't find efi partition."
+    echo "Error: No valid EFI partition found"
+    return 1
 }
+
 
 get_grub_efi_filename() {
     case "$basearch" in
