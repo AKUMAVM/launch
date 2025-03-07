@@ -159,19 +159,10 @@ download() {
     url=$1
     path=$2
 
-    # 有ipv4地址无ipv4网关的情况下，aria2可能会用ipv4下载，而不是ipv6
-    # axel 在 lightsail 上会占用大量cpu
-    # aria2 下载 fedora 官方镜像链接会将meta4文件下载下来，而且占用了指定文件名，造成重命名失效。而且无法指定目录
-    # https://download.opensuse.org/distribution/leap/15.5/appliances/openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
-    # https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-o
-
-    # 构造 aria2 参数
     save=
-    # 文件夹
     if [[ "$path" = '/*' ]]; then
         save="$save -d /"
     fi
-    # 文件名
     if [ -n "$path" ]; then
         case "$(get_url_type "$url")" in
         http) save="$save -o $path" ;;
@@ -179,24 +170,6 @@ download() {
         esac
     fi
 
-    # 阿里云源限速，而且检测 user-agent 禁止 axel/aria2 下载
-    # aria2 默认 --max-tries 5
-
-    # 默认 --max-tries=5，但以下情况服务器出错，aria2不会重试，而是直接返回错误
-    # 因此添加 for 循环
-    #     [ERROR] CUID#7 - Download aborted. URI=https://aka.ms/manawindowsdrivers
-    # Exception: [AbstractCommand.cc:351] errorCode=1 URI=https://aka.ms/manawindowsdrivers
-    #   -> [SocketCore.cc:1019] errorCode=1 SSL/TLS handshake failure:  `not signed by known authorities or invalid'
-
-    # 用 if 的话，报错不会中断脚本
-    # if aria2c xxx; then
-    #     return
-    # fi
-
-    # --user-agent=Wget/1.21.1 \
-    # --retry-wait 5
-
-    # 检测大小时已经下载了种子
     if [ "$(get_url_type "$url")" = bt ]; then
         torrent="$(get_torrent_path_by_magnet $url)"
         if ! [ -f "$torrent" ]; then
@@ -205,8 +178,17 @@ download() {
         url=$torrent
     fi
 
-    aria2c $save "$url"
+    # Coba dengan aria2c dulu
+    if ! aria2c --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" \
+                --referer="https://downloadmirror.intel.com/" \
+                --retry-wait=5 --max-tries=10 \
+                $save "$url"; then
+        # Jika aria2c gagal, pakai wget
+        echo "aria2c gagal, mencoba dengan wget..."
+        wget -O "$path" "$url"
+    fi
 }
+
 
 update_part() {
     sleep 1
