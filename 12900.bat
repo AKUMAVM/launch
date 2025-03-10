@@ -17,8 +17,8 @@ echo Computer name changed to AKUMA-LTSC. A restart is required for the changes 
 net user Administrator Akuma12345
 
 :: Define the URL for the Intel GPU driver
-set "URL=https://downloadmirror.intel.com/764512/gfx_win_101.2115.exe"
-set "OUTFILE=%TEMP%\gfx_win_101.2115.exe"
+set "URL=https://downloadmirror.intel.com/849155/gfx_win_101.6647.exe"
+set "OUTFILE=%TEMP%\gfx_win_101.6647.exe"
 
 echo Downloading Intel GPU driver...
 powershell -ExecutionPolicy Bypass -Command "& {Invoke-WebRequest -Uri '%URL%' -OutFile '%OUTFILE%'}"
