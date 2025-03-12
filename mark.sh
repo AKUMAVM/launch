@@ -140,10 +140,10 @@ mask2cidr() {
     echo $(($2 + (${#x} / 4)))
 }
 
-is_in_china() {
-    [ "$force_cn" = 1 ] && return 0
+#is_in_china() {
+#    [ "$force_cn" = 1 ] && return 0
 
-    if [ -z "$_loc" ]; then
+#    if [ -z "$_loc" ]; then
         # www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
         # 备用 www.bose.cn
         # 备用 www.qualcomm.cn
@@ -151,13 +151,13 @@ is_in_china() {
         # 备用 www.garmin.com.cn
         # 备用 www.autodesk.com.cn
         # 备用 www.keysight.com.cn
-        _loc=$(curl -L http://www.visa.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2)
-        if [ -z "$_loc" ]; then
-            error_and_exit "Can not get location."
-        fi
-    fi
-    [ "$_loc" = CN ]
-}
+#       _loc=$(curl -L http://www.visa.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2)
+#        if [ -z "$_loc" ]; then
+#            error_and_exit "Can not get location."
+#        fi
+#    fi
+#    [ "$_loc" = CN ]
+#}
 
 is_in_windows() {
     [ "$(uname -o)" = Cygwin ] || [ "$(uname -o)" = Msys ]
