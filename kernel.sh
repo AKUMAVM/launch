@@ -63,13 +63,13 @@ curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O
     4) bash mark.sh alpine --password 123@@@ ;;
     5) bash mark.sh centos --password 123@@@ ;;
     6) bash mark.sh kali --password 123@@@ ;;
-    7) bash mark.sh windows --image-name='Windows 10 Pro' --iso='http://iso.akumavm.net/win10.iso' --password Akuma12345 ;;
-    8) bash mark.sh windows --image-name='Windows 11 Pro' --lang=en-us --password 123@@@ ;;
-    9) bash mark.sh windows --image-name='Windows Server 2012 R2 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195443' --password 123@@@ --allow-ping ;;
-    10) bash mark.sh windows --image-name='Windows Server 2016 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195174' --password 123@@@ --allow-ping ;;
-    11) bash mark.sh windows --image-name='Windows Server 2019 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195167' --password 123@@@ --allow-ping ;;
-    12) bash mark.sh windows --image-name='Windows Server 2022 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195280' --password 123@@@ --allow-ping ;;
-    13) bash mark.sh windows --image-name='Windows Server 2025 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2293312' --password 123@@@ --allow-ping ;;
+    7) bash mark.sh windows --image-name='Windows 10 Pro' --iso='http://iso.akumavm.net/win10.iso' --password Akuma12345 --allow-ping ;;
+    8) bash mark.sh windows --image-name='Windows 11 Pro' --lang=en-us --password Akuma12345 --allow-ping ;;
+    9) bash mark.sh windows --image-name='Windows Server 2012 R2 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195443' --password Akuma12345 --allow-ping ;;
+    10) bash mark.sh windows --image-name='Windows Server 2016 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195174' --password Akuma12345 --allow-ping ;;
+    11) bash mark.sh windows --image-name='Windows Server 2019 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195167' --password Akuma12345 --allow-ping ;;
+    12) bash mark.sh windows --image-name='Windows Server 2022 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195280' --password Akuma12345 --allow-ping ;;
+    13) bash mark.sh windows --image-name='Windows Server 2025 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2293312' --password Akuma12345 --allow-ping ;;
     14) bash mark.sh netboot.xyz ;;
     99)
       echo -e "\n"
