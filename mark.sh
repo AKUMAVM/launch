@@ -2276,16 +2276,18 @@ find_main_disk() {
     else
         install_pkg lsblk
         mapper=$(mount | awk '$3=="/boot" {print $1}' | grep . || mount | awk '$3=="/" {print $1}')
-        # Get full device paths (like /dev/sda)
-        disks=$(lsblk -rn --inverse -o NAME,MAJ:MIN,RM,SIZE,RO,TYPE,MOUNTPOINT | grep -w disk | awk '{print "/dev/"$1}')
+        # Get disks with size information
+        disks=$(lsblk -rn --inverse -o NAME,SIZE,MAJ:MIN,RM,RO,TYPE,MOUNTPOINT | grep -w disk | awk '{print "/dev/"$1,$2}')
         
         os_across_disks_count=$(echo "$disks" | wc -l)
         if [ $os_across_disks_count -eq 1 ]; then
-            xda=$(basename "$disks")
-            info "Main disk: $xda"
+            xda=$(echo "$disks" | awk '{print $1}' | xargs basename)
+            info "Main disk: $xda ($(echo "$disks" | awk '{print $2}'))"
         else
             echo "Multiple disks found:"
-            echo "$disks" | nl
+            echo "No.  Device     Size"
+            echo "-------------------"
+            echo "$disks" | awk '{printf "%-4d %-10s %s\n", NR, $1, $2}'
             echo ""
             
             # Prompt user to select disk
@@ -2294,7 +2296,7 @@ find_main_disk() {
                 if [[ "$disk_num" =~ ^[0-9]+$ ]] && 
                    [ "$disk_num" -ge 1 ] && 
                    [ "$disk_num" -le $os_across_disks_count ]; then
-                    selected_disk=$(echo "$disks" | sed -n "${disk_num}p")
+                    selected_disk=$(echo "$disks" | sed -n "${disk_num}p" | awk '{print $1}')
                     xda=$(basename "$selected_disk")
                     break
                 else
@@ -2302,7 +2304,7 @@ find_main_disk() {
                 fi
             done
             
-            echo "Selected disk: $xda"
+            echo "Selected disk: /dev/$xda ($(echo "$disks" | sed -n "${disk_num}p" | awk '{print $2}'))"
         fi
 
         install_pkg fdisk
