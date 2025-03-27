@@ -2270,42 +2270,48 @@ find_main_disk() {
     fi
 
     if is_in_windows; then
-        # TODO:
-        # 已测试 vista
-        # 测试 软raid
-        # 测试 动态磁盘
-
-        # diskpart 命令结果
-        # 磁盘 ID: E5FDE61C
-        # 磁盘 ID: {92CF6564-9B2E-4348-A3BD-D84E3507EBD7}
+        # Windows disk detection logic remains the same
         main_disk=$(printf "%s\n%s" "select volume $c" "uniqueid disk" | diskpart |
             tail -1 | awk '{print $NF}' | sed 's,[{}],,g')
     else
-        # centos7下测试     lsblk --inverse $mapper | grep -w disk     grub2-probe -t disk /
-        # 跨硬盘btrfs       只显示第一个硬盘                            显示两个硬盘
-        # 跨硬盘lvm         显示两个硬盘                                显示/dev/mapper/centos-root
-        # 跨硬盘软raid      显示两个硬盘                                显示/dev/md127
-
-        # 还有 findmnt
-
-        # 改成先检测 /boot/efi /efi /boot 分区？
-
         install_pkg lsblk
-        # 查找主硬盘时，优先查找 /boot 分区，再查找 / 分区
-        # lvm 显示的是 /dev/mapper/xxx-yyy，再用第二条命令得到sda
         mapper=$(mount | awk '$3=="/boot" {print $1}' | grep . || mount | awk '$3=="/" {print $1}')
         xda=$(lsblk -rn --inverse $mapper | grep -w disk | awk '{print $1}' | sort -u)
 
-        # 检测主硬盘是否横跨多个磁盘
         os_across_disks_count=$(wc -l <<<"$xda")
-if [ $os_across_disks_count -eq 1 ]; then
-    info "Main disk: $xda"
-else
-    # Selecting the first disk and reassigning to $xda
-    xda=$(head -n 1 <<<"$xda")
-   echo warning "OS found across $os_across_disks_count disks. Choosing the first disk: $xda"
-    info "Main disk: $xda"
-fi
+        if [ $os_across_disks_count -eq 1 ]; then
+            info "Main disk: $xda"
+        else
+            echo "Multiple disks found:"
+            echo "$xda" | nl
+            echo ""
+            
+            # Prompt user to select disk
+            while true; do
+                read -p "Please select the disk number to install to (1-$os_across_disks_count): " disk_num
+                if [[ "$disk_num" =~ ^[0-9]+$ ]] && 
+                   [ "$disk_num" -ge 1 ] && 
+                   [ "$disk_num" -le $os_across_disks_count ]; then
+                    xda=$(echo "$xda" | sed -n "${disk_num}p")
+                    break
+                else
+                    echo "Invalid selection. Please enter a number between 1 and $os_across_disks_count."
+                fi
+            done
+            
+            echo "Selected disk: $xda"
+        fi
+
+        install_pkg fdisk
+        main_disk=$(fdisk -l /dev/$xda | grep 'Disk identifier' | awk '{print $NF}' | sed 's/0x//')
+    fi
+
+    # Check id format
+    if ! grep -Eix '[0-9a-f]{8}' <<<"$main_disk" &&
+        ! grep -Eix '[0-9a-f-]{36}' <<<"$main_disk"; then
+        error_and_exit "Disk ID is invalid: $main_disk"
+    fi
+}
 
         # 可以用 dd 找出 guid?
 
