@@ -2313,29 +2313,6 @@ find_main_disk() {
     fi
 }
 
-        # 可以用 dd 找出 guid?
-
-        # centos7 blkid lsblk 不显示 PTUUID
-        # centos7 sfdisk 不显示 Disk identifier
-        # alpine blkid 不显示 gpt 分区表的 PTUUID
-        # 因此用 fdisk
-
-        # Disk identifier: 0x36778223                                  # gnu fdisk + mbr
-        # Disk identifier: D6B17C1A-FA1E-40A1-BDCB-0278A3ED9CFC        # gnu fdisk + gpt
-        # Disk identifier (GUID): d6b17c1a-fa1e-40a1-bdcb-0278a3ed9cfc # busybox fdisk + gpt
-        # 不显示 Disk identifier                                        # busybox fdisk + mbr
-
-        # 获取 xda 的 id
-        install_pkg fdisk
-        main_disk=$(fdisk -l /dev/$xda | grep 'Disk identifier' | awk '{print $NF}' | sed 's/0x//')
-    fi
-
-    # 检查 id 格式是否正确
-    if ! grep -Eix '[0-9a-f]{8}' <<<"$main_disk" &&
-        ! grep -Eix '[0-9a-f-]{36}' <<<"$main_disk"; then
-        error_and_exit "Disk ID is invalid: $main_disk"
-    fi
-}
 
 is_found_ipv4_netconf() {
     [ -n "$ipv4_mac" ] && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]
