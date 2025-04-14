@@ -2277,41 +2277,24 @@ find_main_disk() {
         install_pkg lsblk
         mapper=$(mount | awk '$3=="/boot" {print $1}' | grep . || mount | awk '$3=="/" {print $1}')
         # Get disks with size information
-        disks=$(lsblk -rn --inverse -o NAME,SIZE,MAJ:MIN,RM,RO,TYPE,MOUNTPOINT | grep -w disk | awk '{print "/dev/"$1,$2}')
-        
-        os_across_disks_count=$(echo "$disks" | wc -l)
-        if [ $os_across_disks_count -eq 1 ]; then
-            xda=$(echo "$disks" | awk '{print $1}' | xargs basename)
-            info "Main disk: $xda ($(echo "$disks" | awk '{print $2}'))"
-        else
-            echo "Multiple disks found:"
-            echo "No.  Device     Size"
-            echo "-------------------"
-            echo "$disks" | awk '{printf "%-4d %-10s %s\n", NR, $1, $2}'
-            echo ""
-            
-            # Prompt user to select disk
-            while true; do
-                read -p "Please select the disk number to install to (1-$os_across_disks_count): " disk_num
-                if [[ "$disk_num" =~ ^[0-9]+$ ]] && 
-                   [ "$disk_num" -ge 1 ] && 
-                   [ "$disk_num" -le $os_across_disks_count ]; then
-                    selected_disk=$(echo "$disks" | sed -n "${disk_num}p" | awk '{print $1}')
-                    xda=$(basename "$selected_disk")
-                    break
-                else
-                    echo "Invalid selection. Please enter a number between 1 and $os_across_disks_count."
-                fi
-            done
-            
-            echo "Selected disk: /dev/$xda ($(echo "$disks" | sed -n "${disk_num}p" | awk '{print $2}'))"
-        fi
+        xda=$(lsblk -rn --inverse $mapper | grep -w disk | awk '{print $1}' | sort -u)
 
-        install_pkg fdisk
-        main_disk=$(fdisk -l "/dev/$xda" | grep 'Disk identifier' | awk '{print $NF}' | sed 's/0x//')
+        # 检测主硬盘是否横跨多个磁盘
+        os_across_disks_count=$(wc -l <<<"$xda")
+if [ $os_across_disks_count -eq 1 ]; then
+    info "Main disk: $xda"
+else
+    # Selecting the first disk and reassigning to $xda
+    xda=$(head -n 1 <<<"$xda")
+   echo warning "OS found across $os_across_disks_count disks. Choosing the first disk: $xda"
+    info "Main disk: $xda"
+fi
+
+install_pkg fdisk
+        main_disk=$(fdisk -l /dev/$xda | grep 'Disk identifier' | awk '{print $NF}' | sed 's/0x//')
     fi
 
-    # Check id format
+    # 检查 id 格式是否正确
     if ! grep -Eix '[0-9a-f]{8}' <<<"$main_disk" &&
         ! grep -Eix '[0-9a-f-]{36}' <<<"$main_disk"; then
         error_and_exit "Disk ID is invalid: $main_disk"
