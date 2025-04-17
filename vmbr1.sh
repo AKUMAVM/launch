@@ -26,5 +26,3 @@ EOF
 
 echo "vmbr1 configuration added to /etc/network/interfaces."
 
-ifreload -a
-echo "Network changes succesfully applied!"
