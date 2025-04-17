@@ -1,15 +1,12 @@
 #!/bin/bash
 
-# Detect an IP from gre10 interface
-GRE_IP=$(ip -4 addr show gre10 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+# Prompt for IP (will use $ip.1/32)
+read -p "Enter base IP for vmbr1 (e.g. 5.230.118.224): " BASE_IP
 
-if [[ -z "$GRE_IP" ]]; then
-  echo "No IPv4 address found on gre10. Is the interface up and configured?"
-  exit 1
-fi
-
-echo "Detected GRE IP on gre10: $GRE_IP"
-
+# Extract subnet base (remove last octet)
+IP_PREFIX=$(echo $BASE_IP | cut -d'.' -f1-3)
+LAST_OCTET=$(echo $BASE_IP | cut -d'.' -f4)
+BRIDGE_IP="${IP_PREFIX}.${LAST_OCTET}.1"
 # Extract base IP for vmbr1 using first three octets of the GRE IP
 IP_PREFIX=$(echo $GRE_IP | cut -d'.' -f1-3)
 LAST_OCTET=$(echo $GRE_IP | cut -d'.' -f4)
