@@ -5,8 +5,8 @@ read -p "Enter base IP for vmbr1 (e.g. 5.230.118.224): " BASE_IP
 
 # Extract subnet base (remove last octet)
 IP_PREFIX=$(echo $BASE_IP | cut -d'.' -f1-3)
-LAST_OCTET=$(echo $BASE_IP | cut -d'.' -f4)
-BRIDGE_IP="${IP_PREFIX}.${LAST_OCTET}.1"
+BRIDGE_IP="${IP_PREFIX}.1"  # Use .1 instead of manipulating the last octet
+
 
 # Backup current interfaces file
 cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%F-%H%M)
