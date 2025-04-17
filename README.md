@@ -14,7 +14,7 @@ bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAV
 ```
 bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAVM/launch/main/vmbr1.sh)
 ```
-## Auto config GRE Tunnel
+## Auto Config GRE Tunnel
 ```
-curl -sL https://raw.githubusercontent.com/AKUMAVM/launch/main/gre.sh -o /root/gre.sh && chmod +x /root/gre.sh && bash /root/gre.sh
+bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAVM/launch/main/gre.sh)
 ```
