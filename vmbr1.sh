@@ -7,10 +7,6 @@ read -p "Enter base IP for vmbr1 (e.g. 5.230.118.224): " BASE_IP
 IP_PREFIX=$(echo $BASE_IP | cut -d'.' -f1-3)
 LAST_OCTET=$(echo $BASE_IP | cut -d'.' -f4)
 BRIDGE_IP="${IP_PREFIX}.${LAST_OCTET}.1"
-# Extract base IP for vmbr1 using first three octets of the GRE IP
-IP_PREFIX=$(echo $GRE_IP | cut -d'.' -f1-3)
-LAST_OCTET=$(echo $GRE_IP | cut -d'.' -f4)
-BRIDGE_IP="${IP_PREFIX}.${LAST_OCTET}.1"
 
 # Backup current interfaces file
 cp /etc/network/interfaces /etc/network/interfaces.bak.$(date +%F-%H%M)
