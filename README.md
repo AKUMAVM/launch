@@ -14,7 +14,7 @@ bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAV
 ```
 bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAVM/launch/main/vmbr1.sh)
 ```
-## Auto Config GRE Tunnel
+## Auto Config Noez GRE Tunnel
 ```
 bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAVM/launch/main/gre.sh)
 ```
