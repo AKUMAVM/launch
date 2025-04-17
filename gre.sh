@@ -29,9 +29,9 @@ ip addr add $GRE_LOCAL_IP dev $GRE_IF
 ip link set $GRE_IF up
 
 # Add ip rules and routes
-for IP in "${SOURCE_IPS[@]}"; do
-  ip rule add from $IP table $ROUTING_TABLE
-  ip route add $IP dev $BRIDGE_IF
+for IP in ${SOURCE_IPS[@]}; do
+  ip rule add from \$IP table $ROUTING_TABLE
+  ip route add \$IP dev $BRIDGE_IF
 done
 
 # Add default route to custom table
