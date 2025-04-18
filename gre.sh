@@ -21,6 +21,9 @@ MTU_SIZE=${MTU_SIZE:-1476}
 echo "Enter source IPs for 'ip rule' (space-separated, e.g. 5.230.118.224 5.230.118.225):"
 read -a SOURCE_IPS
 
+echo "net.ipv4.ip_forward = 1" | tee /etc/sysctl.conf
+sysctl -p /etc/sysctl.conf
+
 cat <<EOF > /root/gre.sh
 #!/bin/bash
 # Create GRE tunnel
