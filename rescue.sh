@@ -43,13 +43,10 @@ PART lvm vg0 all
 ## LVM Volumes
 LV vg0 swap swap swap 64G
 LV vg0 root / ext4 all
-
-## Root password (use hashed password)
-ROOTPASS yourrootpasswordhash
 EOF
 
 echo "Generated /root/.installimage successfully."
-
+chmod +x /root/.installimage
 # Start installimage
 echo "Starting installation..."
 installimage -a /root/.installimage
