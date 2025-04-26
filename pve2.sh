@@ -1,6 +1,6 @@
 #!/bin/bash
 
-apt remove linux-image-amd64 'linux-image-5.10*' -y
+apt remove linux-image-amd64 'linux-image-6.1*' -y
 update-grub
 apt remove os-prober -y
 
