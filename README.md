@@ -9,6 +9,12 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/AKUMAVM/launch/ma
 ```
 ## PVE Auto Config Network
 ```
+bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAVM/launch/main/pve1.sh)
+```
+```
+bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAVM/launch/main/pve2.sh)
+```
+```
 bash <(wget -qO- --no-check-certificate https://raw.githubusercontent.com/AKUMAVM/launch/main/vmbr0.sh)
 ```
 ```
