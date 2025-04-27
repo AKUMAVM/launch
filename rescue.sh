@@ -49,4 +49,4 @@ echo "Generated /root/.installimage successfully."
 chmod +x /root/.installimage
 # Start installimage
 echo "Starting installation..."
-installimage -a /root/.installimage
+installimage -a -c /root/.installimage
