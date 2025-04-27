@@ -29,7 +29,7 @@ cat > /root/.installimage <<EOF
 # InstallImage
 ## Basic settings
 HOSTNAME $USER_HOSTNAME
-IMAGE /root/images/Debian-1201-bookworm-64-minimal.tar.gz
+IMAGE /root/images/Debian-1208-bookworm-amd64-base.tar.gz
 SWRAID 1
 SWRAIDLEVEL 0
 DRIVE1 $DRIVE1
