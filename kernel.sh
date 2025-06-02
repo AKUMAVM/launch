@@ -45,7 +45,7 @@ curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O
   echo "  5) Latest CentOS"
   echo "  6) Kali Linux"
   echo "  7) Windows 10 Pro"
-  echo "  8) Windows 11 Pro (On Maintenance)"
+  echo "  8) Windows 11 Pro"
   echo "  9) Windows Server 2012 R2 DC"
   echo "  10) Windows Server 2016 DC"
   echo "  11) Windows Server 2019 DC"
@@ -53,7 +53,7 @@ curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O
   echo "  13) Windows Server 2025 DC"
   echo "  14) Netboot"
   echo "  99) Custom DD image"
-  echo "  0)Exit"
+  echo "  0) Exit"
   echo -ne "\nYour option: "
   read N
   case $N in
@@ -63,8 +63,8 @@ curl -O https://raw.githubusercontent.com/AKUMAVM/launch/main/mark.sh || wget -O
     4) bash mark.sh alpine --password 123@@@ ;;
     5) bash mark.sh centos --password 123@@@ ;;
     6) bash mark.sh kali --password 123@@@ ;;
-    7) bash mark.sh windows --image-name='Windows 10 Pro' --iso='http://iso.akumavm.com/win10.iso' --password Akuma12345 --allow-ping ;;
-    8) bash mark.sh windows --image-name='Windows 11 Pro' --lang=en-us --password Akuma12345 --allow-ping ;;
+    7) bash mark.sh windows --image-name='Windows 10 Pro' --iso='https://iso.akumavm.com/win10.iso' --password Akuma12345 --allow-ping ;;
+    8) bash mark.sh windows --image-name='Windows 11 Pro' --iso='https://iso.akumavm.com/win11.iso' --password Akuma12345 --allow-ping ;;
     9) bash mark.sh windows --image-name='Windows Server 2012 R2 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195443' --password Akuma12345 --allow-ping ;;
     10) bash mark.sh windows --image-name='Windows Server 2016 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195174' --password Akuma12345 --allow-ping ;;
     11) bash mark.sh windows --image-name='Windows Server 2019 SERVERDATACENTER' --iso='https://go.microsoft.com/fwlink/p/?LinkID=2195167' --password Akuma12345 --allow-ping ;;
