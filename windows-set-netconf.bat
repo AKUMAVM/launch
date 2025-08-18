@@ -68,15 +68,15 @@ REM Remove memory dump files
 del /q /f "C:\Windows\*.DMP"
 for /d %%D in ("C:\Windows\Minidump") do rd /s /q "%%D"
 
-REM Download and run system optimizer
-powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://install.virtfusion.net/optimize.exe', 'C:\Windows\Temp\optimize.exe')" <NUL
-cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate disable -storeapp remove-all -antivirus disable
-cmd /c C:\Windows\Temp\optimize.exe -f 3 4 5 6 9
-del C:\Windows\Temp\optimize.exe
+#REM Download and run system optimizer
+#powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://install.virtfusion.net/optimize.exe', 'C:\Windows\Temp\optimize.exe')" <NUL
+#cmd /c C:\Windows\Temp\optimize.exe -v -o -g -windowsupdate disable -storeapp remove-all -antivirus disable
+#cmd /c C:\Windows\Temp\optimize.exe -f 3 4 5 6 9
+#del C:\Windows\Temp\optimize.exe
 
-REM Set account lockout threshold to 0 (disable)
-net accounts /lockoutthreshold:0
-net accounts | find /i "Lockout threshold"
+#REM Set account lockout threshold to 0 (disable)
+#net accounts /lockoutthreshold:0
+#net accounts | find /i "Lockout threshold"
 
 rem Delete script file after execution
 del "%~f0"
